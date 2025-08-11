@@ -1,0 +1,1 @@
+anvil --fork-url https://reth-ethereum.ithaca.xyz/rpc

@@ -1,0 +1,1 @@
+forge test -vv --fork-url https://reth-ethereum.ithaca.xyz/rpc

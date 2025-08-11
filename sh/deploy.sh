@@ -1,0 +1,1 @@
+forge script script/AlephPaymentProcessor.s.sol:AlephPaymentProcessorScript --rpc-url http://localhost:8545 --broadcast --verify -vvvv --interactives 1
