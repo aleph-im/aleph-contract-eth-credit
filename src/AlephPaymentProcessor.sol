@@ -45,18 +45,27 @@ contract AlephPaymentProcessor is
         address indexed _token,
         address indexed sender,
         uint256 amount,
+        uint256 swapAmount,
+        uint256 alephReceived,
         uint256 amountBurned,
         uint256 amountToDistribution,
-        uint256 amountToDevelopers
+        uint256 amountToDevelopers,
+        uint8 swapVersion,
+        bool isStable
     );
 
+    event SwapExecuted(address indexed token, uint256 amountIn, uint256 amountOut, uint8 version, uint256 timestamp);
+
     // Events for parameter updates
-    event SwapConfigUpdated(address indexed token, uint8 version);
-    event SwapConfigRemoved(address indexed token, uint8 version);
-    event DistributionRecipientUpdated(address indexed recipient);
-    event DevelopersRecipientUpdated(address indexed recipient);
-    event BurnPercentageUpdated(uint8 percentage);
-    event DevelopersPercentageUpdated(uint8 percentage);
+    event SwapConfigUpdated(
+        address indexed token, uint8 version, address indexed oldToken, uint8 oldVersion, uint256 timestamp
+    );
+    event SwapConfigRemoved(address indexed token, uint8 version, uint256 timestamp);
+    event DistributionRecipientUpdated(address indexed oldRecipient, address indexed newRecipient, uint256 timestamp);
+    event DevelopersRecipientUpdated(address indexed oldRecipient, address indexed newRecipient, uint256 timestamp);
+    event BurnPercentageUpdated(uint8 oldPercentage, uint8 newPercentage, uint256 timestamp);
+    event DevelopersPercentageUpdated(uint8 oldPercentage, uint8 newPercentage, uint256 timestamp);
+    event StableTokenUpdated(address indexed token, bool isStable, uint256 timestamp);
 
     // Payment settings
     address public distributionRecipient; // Address that receives the distribution portion of payments
@@ -146,6 +155,7 @@ contract AlephPaymentProcessor is
         onlyRole(adminRole)
         nonReentrant
     {
+        // Enhanced input validation
         require(_ttl >= 60, "TTL too short"); // Minimum 60 seconds
         require(_ttl <= 3600, "TTL too long"); // Maximum 1 hour
         require(
@@ -153,17 +163,36 @@ contract AlephPaymentProcessor is
             "Pending ALEPH balance must be processed before"
         );
 
+        // Validate token configuration exists if not ALEPH
+        if (_token != address(aleph)) {
+            require(swapConfig[_token].version > 0, "Token not configured for processing");
+        }
+
+        // Validate amounts
+        if (_amountIn > 0) {
+            require(_amountIn <= type(uint128).max, "Amount in exceeds maximum");
+        }
+        require(_amountOutMinimum <= type(uint128).max, "Amount out minimum exceeds maximum");
+
         uint128 amountIn = getAmountIn(_token, _amountIn);
 
-        // Calculate portions from initial amount: 5% developers, 5% burn, 90% distribution
+        // Cache storage variables for gas optimization
         uint8 cachedDevelopersPercentage = developersPercentage;
         uint8 cachedBurnPercentage = burnPercentage;
+        address cachedDevelopersRecipient = developersRecipient;
+        address cachedDistributionRecipient = distributionRecipient;
+        bool isStable = isStableToken[_token];
+        address alephAddress = address(aleph);
+
+        // Calculate portions from initial amount
         (uint256 developersAmount, uint256 burnAmount, uint256 distributionAmount) =
             calculateProportions(uint256(amountIn), cachedDevelopersPercentage, cachedBurnPercentage);
 
-        if (isStableToken[_token] && _token != address(aleph)) {
+        if (isStable && _token != alephAddress) {
             // For stable tokens: send developers portion directly, swap the rest
-            transferTokenOrEth(_token, developersRecipient, developersAmount, "Transfer to developers recipient failed");
+            transferTokenOrEth(
+                _token, cachedDevelopersRecipient, developersAmount, "Transfer to developers recipient failed"
+            );
 
             // Swap burn + distribution portions to ALEPH
             uint256 swapAmount = burnAmount + distributionAmount;
@@ -175,28 +204,46 @@ contract AlephPaymentProcessor is
 
             aleph.safeTransfer(address(0), alephBurnAmount);
 
-            aleph.safeTransfer(distributionRecipient, alephDistributionAmount);
+            aleph.safeTransfer(cachedDistributionRecipient, alephDistributionAmount);
 
             emit TokenPaymentsProcessed(
-                _token, msg.sender, amountIn, alephBurnAmount, alephDistributionAmount, developersAmount
+                _token,
+                msg.sender,
+                amountIn,
+                swapAmount,
+                alephReceived,
+                alephBurnAmount,
+                alephDistributionAmount,
+                developersAmount,
+                swapConfig[_token].version,
+                isStable
             );
         } else {
             // For non-stable tokens or ALEPH: swap entire amount, then distribute proportionally
             uint256 alephReceived =
-                _token != address(aleph) ? swapToken(_token, amountIn, _amountOutMinimum, _ttl) : amountIn;
+                _token != alephAddress ? swapToken(_token, amountIn, _amountOutMinimum, _ttl) : amountIn;
 
             // Calculate ALEPH amounts based on original input percentages
             (uint256 alephDevelopersAmount, uint256 alephBurnAmount, uint256 alephDistributionAmount) =
                 calculateProportions(alephReceived, cachedDevelopersPercentage, cachedBurnPercentage);
 
-            aleph.safeTransfer(developersRecipient, alephDevelopersAmount);
+            aleph.safeTransfer(cachedDevelopersRecipient, alephDevelopersAmount);
 
             aleph.safeTransfer(address(0), alephBurnAmount);
 
-            aleph.safeTransfer(distributionRecipient, alephDistributionAmount);
+            aleph.safeTransfer(cachedDistributionRecipient, alephDistributionAmount);
 
             emit TokenPaymentsProcessed(
-                _token, msg.sender, amountIn, alephBurnAmount, alephDistributionAmount, alephDevelopersAmount
+                _token,
+                msg.sender,
+                amountIn,
+                _token != alephAddress ? amountIn : 0,
+                alephReceived,
+                alephBurnAmount,
+                alephDistributionAmount,
+                alephDevelopersAmount,
+                _token != alephAddress ? swapConfig[_token].version : 0,
+                isStable
             );
         }
     }
@@ -215,7 +262,14 @@ contract AlephPaymentProcessor is
 
         validateNonZeroAddress(_to, "Invalid recipient address");
 
+        // Additional input validation
+        require(_to != address(this), "Cannot withdraw to contract itself");
+        if (_amount > 0) {
+            require(_amount <= type(uint128).max, "Amount exceeds maximum");
+        }
+
         uint256 amount = getAmountIn(_token, _amount);
+        require(amount > 0, "No balance to withdraw");
 
         transferTokenOrEth(_token, _to, amount, "Transfer failed");
     }
@@ -293,8 +347,9 @@ contract AlephPaymentProcessor is
      */
     function setBurnPercentage(uint8 _newBurnPercentage) external onlyOwner {
         validatePercentages(_newBurnPercentage, developersPercentage);
+        uint8 oldPercentage = burnPercentage;
         burnPercentage = _newBurnPercentage;
-        emit BurnPercentageUpdated(_newBurnPercentage);
+        emit BurnPercentageUpdated(oldPercentage, _newBurnPercentage, block.timestamp);
     }
 
     /**
@@ -303,8 +358,9 @@ contract AlephPaymentProcessor is
      */
     function setDevelopersPercentage(uint8 _newDevelopersPercentage) external onlyOwner {
         validatePercentages(burnPercentage, _newDevelopersPercentage);
+        uint8 oldPercentage = developersPercentage;
         developersPercentage = _newDevelopersPercentage;
-        emit DevelopersPercentageUpdated(_newDevelopersPercentage);
+        emit DevelopersPercentageUpdated(oldPercentage, _newDevelopersPercentage, block.timestamp);
     }
 
     /**
@@ -322,8 +378,9 @@ contract AlephPaymentProcessor is
      */
     function setDistributionRecipient(address _newDistributionRecipient) external onlyOwner {
         validateNonZeroAddress(_newDistributionRecipient, "Invalid distribution recipient address");
+        address oldRecipient = distributionRecipient;
         distributionRecipient = _newDistributionRecipient;
-        emit DistributionRecipientUpdated(_newDistributionRecipient);
+        emit DistributionRecipientUpdated(oldRecipient, _newDistributionRecipient, block.timestamp);
     }
 
     /**
@@ -332,8 +389,9 @@ contract AlephPaymentProcessor is
      */
     function setDevelopersRecipient(address _newDevelopersRecipient) external onlyOwner {
         validateNonZeroAddress(_newDevelopersRecipient, "Invalid developers recipient address");
+        address oldRecipient = developersRecipient;
         developersRecipient = _newDevelopersRecipient;
-        emit DevelopersRecipientUpdated(_newDevelopersRecipient);
+        emit DevelopersRecipientUpdated(oldRecipient, _newDevelopersRecipient, block.timestamp);
     }
 
     /**
@@ -343,6 +401,7 @@ contract AlephPaymentProcessor is
      */
     function setStableToken(address _token, bool _isStable) external onlyOwner {
         isStableToken[_token] = _isStable;
+        emit StableTokenUpdated(_token, _isStable, block.timestamp);
     }
 
     /**
@@ -381,9 +440,12 @@ contract AlephPaymentProcessor is
      * @param _v2Path Array of addresses defining the swap path
      */
     function setSwapConfigV2(address _address, address[] calldata _v2Path) external onlyOwner {
+        // Enhanced input validation - allow address(0) for ETH
+        require(_address != address(aleph), "Cannot configure ALEPH token for swapping");
         require(_v2Path.length >= 2, "Invalid V2 path");
         require(_v2Path.length <= 5, "V2 path too long"); // Prevent excessive gas costs
         require(_v2Path[_v2Path.length - 1] == address(aleph), "Path must end with ALEPH token");
+        require(_v2Path[0] == _address || _v2Path[0] == address(0), "Path must start with input token");
 
         // Validate no duplicate consecutive tokens in path
         for (uint256 i = 1; i < _v2Path.length; i++) {
@@ -393,10 +455,11 @@ contract AlephPaymentProcessor is
         // Replace address(0) with WETH in the path during configuration
         address[] memory processedPath = replaceAddressZeroWithWethV2(_v2Path);
 
+        SwapConfig memory oldConfig = swapConfig[_address];
         swapConfig[_address] =
             SwapConfig({version: 2, token: _address, v4Path: new PathKey[](0), v3Path: "", v2Path: processedPath});
 
-        emit SwapConfigUpdated(_address, 2);
+        emit SwapConfigUpdated(_address, 2, oldConfig.token, oldConfig.version, block.timestamp);
     }
 
     /**
@@ -405,6 +468,8 @@ contract AlephPaymentProcessor is
      * @param _v3Path Encoded path with fee tiers for V3 swapping
      */
     function setSwapConfigV3(address _address, bytes calldata _v3Path) external onlyOwner {
+        // Enhanced input validation - allow address(0) for ETH
+        require(_address != address(aleph), "Cannot configure ALEPH token for swapping");
         require(_v3Path.length >= 43, "V3 path too short");
         require(_v3Path.length <= 200, "V3 path too long"); // Prevent excessive gas costs
         require(_v3Path.length % 23 == 20, "Invalid V3 path length"); // Must be 20 + n*23 bytes
@@ -420,6 +485,7 @@ contract AlephPaymentProcessor is
         // Replace address(0) with WETH in the path during configuration
         bytes memory processedPath = replaceAddressZeroWithWethV3(_v3Path);
 
+        SwapConfig memory oldConfig = swapConfig[_address];
         swapConfig[_address] = SwapConfig({
             version: 3,
             token: _address,
@@ -428,7 +494,7 @@ contract AlephPaymentProcessor is
             v2Path: new address[](0)
         });
 
-        emit SwapConfigUpdated(_address, 3);
+        emit SwapConfigUpdated(_address, 3, oldConfig.token, oldConfig.version, block.timestamp);
     }
 
     /**
@@ -437,6 +503,8 @@ contract AlephPaymentProcessor is
      * @param _v4Path Array of PathKey structs defining the V4 swap path
      */
     function setSwapConfigV4(address _address, PathKey[] calldata _v4Path) external onlyOwner {
+        // Enhanced input validation - allow address(0) for ETH
+        require(_address != address(aleph), "Cannot configure ALEPH token for swapping");
         require(_v4Path.length > 0, "Empty V4 path");
         require(_v4Path.length <= 5, "V4 path too long"); // Prevent excessive gas costs
         require(
@@ -444,10 +512,11 @@ contract AlephPaymentProcessor is
             "Path must end with ALEPH token"
         );
 
+        SwapConfig memory oldConfig = swapConfig[_address];
         swapConfig[_address] =
             SwapConfig({version: 4, token: _address, v4Path: _v4Path, v3Path: "", v2Path: new address[](0)});
 
-        emit SwapConfigUpdated(_address, 4);
+        emit SwapConfigUpdated(_address, 4, oldConfig.token, oldConfig.version, block.timestamp);
     }
 
     /**
@@ -459,7 +528,7 @@ contract AlephPaymentProcessor is
         require(config.version > 0, "Invalid swap config");
 
         delete swapConfig[_address];
-        emit SwapConfigRemoved(_address, config.version);
+        emit SwapConfigRemoved(_address, config.version, block.timestamp);
     }
 
     /**
@@ -551,14 +620,15 @@ contract AlephPaymentProcessor is
         returns (uint256 amountOut)
     {
         SwapConfig memory config = swapConfig[_token];
-        require(config.version >= 2 && config.version <= 4, "Invalid uniswap version");
+        uint8 version = config.version;
+        require(version >= 2 && version <= 4, "Invalid uniswap version");
 
-        if (config.version == 2) {
-            return swapV2(_token, _amountIn, _amountOutMinimum, _ttl);
-        } else if (config.version == 3) {
-            return swapV3(_token, _amountIn, _amountOutMinimum, _ttl);
+        if (version == 2) {
+            return swapV2(_token, _amountIn, _amountOutMinimum, _ttl, config);
+        } else if (version == 3) {
+            return swapV3(_token, _amountIn, _amountOutMinimum, _ttl, config);
         } else {
-            return swapV4(_token, _amountIn, _amountOutMinimum, _ttl);
+            return swapV4(_token, _amountIn, _amountOutMinimum, _ttl, config);
         }
     }
 
@@ -570,11 +640,10 @@ contract AlephPaymentProcessor is
      * @param _ttl Time to live for the swap
      * @return amountOut Amount of ALEPH tokens received
      */
-    function swapV2(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
+    function swapV2(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl, SwapConfig memory config)
         internal
         returns (uint256 amountOut)
     {
-        SwapConfig memory config = swapConfig[_token];
         require(config.version == 2, "Invalid uniswap version");
         require(config.v2Path.length >= 2, "Invalid V2 path");
 
@@ -642,6 +711,8 @@ contract AlephPaymentProcessor is
         uint256 balanceAfter = aleph.balanceOf(address(this));
         amountOut = balanceAfter - balanceBefore;
         require(amountOut >= _amountOutMinimum, "Insufficient output amount");
+
+        emit SwapExecuted(_token, _amountIn, amountOut, 2, block.timestamp);
         return amountOut;
     }
 
@@ -653,11 +724,10 @@ contract AlephPaymentProcessor is
      * @param _ttl Time to live for the swap
      * @return amountOut Amount of ALEPH tokens received
      */
-    function swapV3(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
+    function swapV3(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl, SwapConfig memory config)
         internal
         returns (uint256 amountOut)
     {
-        SwapConfig memory config = swapConfig[_token];
         require(config.version == 3, "Invalid uniswap version");
         require(config.v3Path.length >= 43, "V3 path too short");
 
@@ -725,6 +795,8 @@ contract AlephPaymentProcessor is
         uint256 balanceAfter = aleph.balanceOf(address(this));
         amountOut = balanceAfter - balanceBefore;
         require(amountOut >= _amountOutMinimum, "Insufficient output amount");
+
+        emit SwapExecuted(_token, _amountIn, amountOut, 3, block.timestamp);
         return amountOut;
     }
 
@@ -736,11 +808,10 @@ contract AlephPaymentProcessor is
      * @param _ttl Time to live for the swap
      * @return amountOut Amount of ALEPH tokens received
      */
-    function swapV4(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
+    function swapV4(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl, SwapConfig memory config)
         internal
         returns (uint256 amountOut)
     {
-        SwapConfig memory config = swapConfig[_token];
         require(config.version == 4, "Invalid uniswap version");
 
         Currency currencyIn = Currency.wrap(_token);
@@ -797,6 +868,8 @@ contract AlephPaymentProcessor is
         uint256 balanceAfter = aleph.balanceOf(address(this));
         amountOut = balanceAfter - balanceBefore;
         require(amountOut >= _amountOutMinimum, "Insufficient output amount");
+
+        emit SwapExecuted(_token, _amountIn, amountOut, 4, block.timestamp);
         return amountOut;
     }
 }

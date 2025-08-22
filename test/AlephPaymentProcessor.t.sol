@@ -1160,7 +1160,7 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.removeSwapConfig(address(0));
         vm.deal(contractAddress, 1000);
 
-        vm.expectRevert("Invalid uniswap version");
+        vm.expectRevert("Token not configured for processing");
         alephPaymentProcessor.process(address(0), 500, 0, 60);
     }
 
@@ -2553,7 +2553,7 @@ contract AlephPaymentProcessorTest is Test {
         deal(daiTokenAddress, contractAddress, 1000 ether); // DAI has 18 decimals
 
         // Try to process token without configuration
-        vm.expectRevert("Invalid uniswap version");
+        vm.expectRevert("Token not configured for processing");
         alephPaymentProcessor.process(daiTokenAddress, 100 ether, 0, 60);
     }
 
