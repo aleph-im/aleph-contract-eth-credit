@@ -1,1 +1,2 @@
-forge script script/AlephPaymentProcessor.s.sol:AlephPaymentProcessorScript --rpc-url http://localhost:8545 --broadcast --verify -vvvv --interactives 1
+forge clean && forge build
+forge script script/AlephPaymentProcessor.s.sol:AlephPaymentProcessorScript --rpc-url https://reth-ethereum.ithaca.xyz/rpc --ledger --broadcast --verify -vvvv
