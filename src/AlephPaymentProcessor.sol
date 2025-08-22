@@ -23,11 +23,7 @@ import {IPermit2} from "../lib/permit2/src/interfaces/IPermit2.sol";
 import {Currency} from "../lib/v4-core/src/types/Currency.sol";
 import {PathKey} from "../lib/v4-periphery/src/libraries/PathKey.sol";
 
-contract AlephPaymentProcessor is
-    Initializable,
-    Ownable2StepUpgradeable,
-    AccessControlUpgradeable
-{
+contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, AccessControlUpgradeable {
     using SafeERC20 for IERC20;
 
     struct TokenConfig {
@@ -85,20 +81,11 @@ contract AlephPaymentProcessor is
         address _permit2Address
     ) public initializer {
         require(_alephTokenAddress != address(0), "Invalid token address");
-        require(
-            _distributionRecipientAddress != address(0),
-            "Invalid distribution recipient address"
-        );
-        require(
-            _developersRecipientAddress != address(0),
-            "Invalid developers recipient address"
-        );
+        require(_distributionRecipientAddress != address(0), "Invalid distribution recipient address");
+        require(_developersRecipientAddress != address(0), "Invalid developers recipient address");
         require(_burnPercentage < 101, "Invalid burn percentage");
         require(_developersPercentage < 101, "Invalid developers percentage");
-        require(
-            _burnPercentage + _developersPercentage <= 100,
-            "Total percentages exceed 100%"
-        );
+        require(_burnPercentage + _developersPercentage <= 100, "Total percentages exceed 100%");
 
         __Ownable_init(msg.sender);
         __Ownable2Step_init();
@@ -120,12 +107,10 @@ contract AlephPaymentProcessor is
         permit2 = IPermit2(_permit2Address);
     }
 
-    function process(
-        address _token,
-        uint128 _amountIn,
-        uint128 _amountOutMinimum,
-        uint48 _ttl
-    ) external onlyRole(ADMIN_ROLE) {
+    function process(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
+        external
+        onlyRole(ADMIN_ROLE)
+    {
         require(
             _token == address(ALEPH) || ALEPH.balanceOf(address(this)) == 0,
             "Pending ALEPH balance must be processed before"
@@ -134,49 +119,31 @@ contract AlephPaymentProcessor is
         uint128 amountIn = getAmountIn(_token, _amountIn);
 
         // Calculate portions from initial amount: 5% developers, 5% burn, 90% distribution
-        uint256 developersAmount = (uint256(amountIn) * developersPercentage) /
-            100;
+        uint256 developersAmount = (uint256(amountIn) * developersPercentage) / 100;
         uint256 burnAmount = (uint256(amountIn) * burnPercentage) / 100;
-        uint256 distributionAmount = uint256(amountIn) -
-            developersAmount -
-            burnAmount;
+        uint256 distributionAmount = uint256(amountIn) - developersAmount - burnAmount;
 
         if (isStableToken[_token] && _token != address(ALEPH)) {
             // For stable tokens: send developers portion directly, swap the rest
             if (_token != address(0)) {
                 require(
-                    IERC20(_token).transfer(
-                        developersRecipient,
-                        developersAmount
-                    ),
+                    IERC20(_token).transfer(developersRecipient, developersAmount),
                     "Transfer to developers recipient failed"
                 );
             } else {
-                (bool success, ) = developersRecipient.call{
-                    value: developersAmount
-                }("");
+                (bool success,) = developersRecipient.call{value: developersAmount}("");
                 require(success, "ETH transfer to developers recipient failed");
             }
 
             // Swap burn + distribution portions to ALEPH
             uint256 swapAmount = burnAmount + distributionAmount;
-            uint256 alephReceived = swapV4(
-                _token,
-                uint128(swapAmount),
-                _amountOutMinimum,
-                _ttl
-            );
+            uint256 alephReceived = swapV4(_token, uint128(swapAmount), _amountOutMinimum, _ttl);
 
             // Calculate proportional ALEPH amounts based on original percentages
-            uint256 alephBurnAmount = swapAmount > 0
-                ? (alephReceived * burnAmount) / swapAmount
-                : 0;
+            uint256 alephBurnAmount = swapAmount > 0 ? (alephReceived * burnAmount) / swapAmount : 0;
             uint256 alephDistributionAmount = alephReceived - alephBurnAmount;
 
-            require(
-                ALEPH.transfer(address(0), alephBurnAmount),
-                "Burn transfer failed"
-            );
+            require(ALEPH.transfer(address(0), alephBurnAmount), "Burn transfer failed");
 
             require(
                 ALEPH.transfer(distributionRecipient, alephDistributionAmount),
@@ -184,36 +151,23 @@ contract AlephPaymentProcessor is
             );
 
             emit TokenPaymentsProcessed(
-                _token,
-                msg.sender,
-                amountIn,
-                alephBurnAmount,
-                alephDistributionAmount,
-                developersAmount
+                _token, msg.sender, amountIn, alephBurnAmount, alephDistributionAmount, developersAmount
             );
         } else {
             // For non-stable tokens or ALEPH: swap entire amount, then distribute proportionally
-            uint256 alephReceived = _token != address(ALEPH)
-                ? swapV4(_token, amountIn, _amountOutMinimum, _ttl)
-                : amountIn;
+            uint256 alephReceived =
+                _token != address(ALEPH) ? swapV4(_token, amountIn, _amountOutMinimum, _ttl) : amountIn;
 
             // Calculate ALEPH amounts based on original input percentages
-            uint256 alephDevelopersAmount = (alephReceived *
-                developersPercentage) / 100;
+            uint256 alephDevelopersAmount = (alephReceived * developersPercentage) / 100;
             uint256 alephBurnAmount = (alephReceived * burnPercentage) / 100;
-            uint256 alephDistributionAmount = alephReceived -
-                alephDevelopersAmount -
-                alephBurnAmount;
+            uint256 alephDistributionAmount = alephReceived - alephDevelopersAmount - alephBurnAmount;
 
             require(
-                ALEPH.transfer(developersRecipient, alephDevelopersAmount),
-                "Transfer to developers recipient failed"
+                ALEPH.transfer(developersRecipient, alephDevelopersAmount), "Transfer to developers recipient failed"
             );
 
-            require(
-                ALEPH.transfer(address(0), alephBurnAmount),
-                "Burn transfer failed"
-            );
+            require(ALEPH.transfer(address(0), alephBurnAmount), "Burn transfer failed");
 
             require(
                 ALEPH.transfer(distributionRecipient, alephDistributionAmount),
@@ -221,21 +175,12 @@ contract AlephPaymentProcessor is
             );
 
             emit TokenPaymentsProcessed(
-                _token,
-                msg.sender,
-                amountIn,
-                alephBurnAmount,
-                alephDistributionAmount,
-                alephDevelopersAmount
+                _token, msg.sender, amountIn, alephBurnAmount, alephDistributionAmount, alephDevelopersAmount
             );
         }
     }
 
-    function withdraw(
-        address _token,
-        address payable _to,
-        uint128 _amount
-    ) external onlyRole(ADMIN_ROLE) {
+    function withdraw(address _token, address payable _to, uint128 _amount) external onlyRole(ADMIN_ROLE) {
         require(
             _token != address(ALEPH) && tokenConfig[_token].version == 0,
             "Cannot withdraw a token configured for automatic distribution"
@@ -254,23 +199,16 @@ contract AlephPaymentProcessor is
         if (_token != address(0)) {
             success = IERC20(_token).transfer(_to, amount);
         } else {
-            (success, ) = _to.call{value: amount}("");
+            (success,) = _to.call{value: amount}("");
         }
 
         require(success, "Transfer failed");
     }
 
-    function getAmountIn(
-        address _token,
-        uint128 _amountIn
-    ) internal view returns (uint128 amountIn) {
-        uint256 balance = _token != address(0)
-            ? IERC20(_token).balanceOf(address(this))
-            : address(this).balance;
+    function getAmountIn(address _token, uint128 _amountIn) internal view returns (uint128 amountIn) {
+        uint256 balance = _token != address(0) ? IERC20(_token).balanceOf(address(this)) : address(this).balance;
 
-        amountIn = _amountIn != 0
-            ? _amountIn
-            : uint128(Math.min(balance, type(uint128).max));
+        amountIn = _amountIn != 0 ? _amountIn : uint128(Math.min(balance, type(uint128).max));
 
         // Check balance (native ETH if _token == 0x0 or ERC20 otherwise)
         require(balance >= amountIn, "Insufficient balance");
@@ -280,47 +218,26 @@ contract AlephPaymentProcessor is
 
     function setBurnPercentage(uint8 _newBurnPercentage) external onlyOwner {
         require(_newBurnPercentage < 101, "Invalid burn percentage");
-        require(
-            _newBurnPercentage + developersPercentage <= 100,
-            "Total percentages exceed 100%"
-        );
+        require(_newBurnPercentage + developersPercentage <= 100, "Total percentages exceed 100%");
         burnPercentage = _newBurnPercentage;
         emit BurnPercentageUpdated(_newBurnPercentage);
     }
 
-    function setDevelopersPercentage(
-        uint8 _newDevelopersPercentage
-    ) external onlyOwner {
-        require(
-            _newDevelopersPercentage < 101,
-            "Invalid developers percentage"
-        );
-        require(
-            burnPercentage + _newDevelopersPercentage <= 100,
-            "Total percentages exceed 100%"
-        );
+    function setDevelopersPercentage(uint8 _newDevelopersPercentage) external onlyOwner {
+        require(_newDevelopersPercentage < 101, "Invalid developers percentage");
+        require(burnPercentage + _newDevelopersPercentage <= 100, "Total percentages exceed 100%");
         developersPercentage = _newDevelopersPercentage;
         emit DevelopersPercentageUpdated(_newDevelopersPercentage);
     }
 
-    function setDistributionRecipient(
-        address _newDistributionRecipient
-    ) external onlyOwner {
-        require(
-            _newDistributionRecipient != address(0),
-            "Invalid distribution recipient address"
-        );
+    function setDistributionRecipient(address _newDistributionRecipient) external onlyOwner {
+        require(_newDistributionRecipient != address(0), "Invalid distribution recipient address");
         distributionRecipient = _newDistributionRecipient;
         emit DistributionRecipientUpdated(_newDistributionRecipient);
     }
 
-    function setDevelopersRecipient(
-        address _newDevelopersRecipient
-    ) external onlyOwner {
-        require(
-            _newDevelopersRecipient != address(0),
-            "Invalid developers recipient address"
-        );
+    function setDevelopersRecipient(address _newDevelopersRecipient) external onlyOwner {
+        require(_newDevelopersRecipient != address(0), "Invalid developers recipient address");
         developersRecipient = _newDevelopersRecipient;
         emit DevelopersRecipientUpdated(_newDevelopersRecipient);
     }
@@ -337,21 +254,12 @@ contract AlephPaymentProcessor is
         _revokeRole(ADMIN_ROLE, _admin);
     }
 
-    function getTokenConfig(
-        address _address
-    ) external view returns (TokenConfig memory) {
+    function getTokenConfig(address _address) external view returns (TokenConfig memory) {
         return tokenConfig[_address];
     }
 
-    function setTokenConfigV4(
-        address _address,
-        PathKey[] calldata _path
-    ) external onlyOwner {
-        tokenConfig[_address] = TokenConfig({
-            token: _address,
-            version: 4,
-            path: _path
-        });
+    function setTokenConfigV4(address _address, PathKey[] calldata _path) external onlyOwner {
+        tokenConfig[_address] = TokenConfig({token: _address, version: 4, path: _path});
 
         emit TokenConfigUpdated(_address, 4);
     }
@@ -370,23 +278,18 @@ contract AlephPaymentProcessor is
      */
     receive() external payable {}
 
-    function approve(
-        address _token,
-        uint160 _amount,
-        uint48 _ttl
-    ) internal onlyRole(ADMIN_ROLE) {
+    function approve(address _token, uint160 _amount, uint48 _ttl) internal onlyRole(ADMIN_ROLE) {
         uint48 expiration = uint48(block.timestamp) + _ttl;
         IERC20(_token).approve(address(permit2), type(uint256).max);
         permit2.approve(_token, address(router), _amount, expiration);
     }
 
     // https://docs.uniswap.org/contracts/v4/quickstart/swap
-    function swapV4(
-        address _token,
-        uint128 _amountIn,
-        uint128 _amountOutMinimum,
-        uint48 _ttl
-    ) internal onlyRole(ADMIN_ROLE) returns (uint256 amountOut) {
+    function swapV4(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
+        internal
+        onlyRole(ADMIN_ROLE)
+        returns (uint256 amountOut)
+    {
         TokenConfig memory config = tokenConfig[_token];
         require(config.version == 4, "Invalid uniswap version");
 
@@ -401,11 +304,8 @@ contract AlephPaymentProcessor is
         bytes[] memory inputs = new bytes[](1);
 
         // Encode V4Router actions
-        bytes memory actions = abi.encodePacked(
-            uint8(Actions.SWAP_EXACT_IN),
-            uint8(Actions.SETTLE_ALL),
-            uint8(Actions.TAKE_ALL)
-        );
+        bytes memory actions =
+            abi.encodePacked(uint8(Actions.SWAP_EXACT_IN), uint8(Actions.SETTLE_ALL), uint8(Actions.TAKE_ALL));
 
         // Prepare parameters for each action
         bytes[] memory params = new bytes[](3);
