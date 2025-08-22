@@ -4,9 +4,11 @@ pragma solidity ^0.8.13;
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {UniversalRouter} from "@uniswap/universal-router/contracts/UniversalRouter.sol";
 import {Commands} from "@uniswap/universal-router/contracts/libraries/Commands.sol";
 import {IV4Router} from "@uniswap/v4-periphery/src/interfaces/IV4Router.sol";
@@ -22,8 +24,14 @@ import {PathKey} from "@uniswap/v4-periphery/src/libraries/PathKey.sol";
  *      developers, and distribution recipients. Supports native ETH and ERC20 tokens.
  *      Uses Universal Router v2 for optimal routing and gas efficiency.
  */
-contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, AccessControlUpgradeable {
+contract AlephPaymentProcessor is
+    Initializable,
+    Ownable2StepUpgradeable,
+    AccessControlUpgradeable,
+    ReentrancyGuardUpgradeable
+{
     using SafeERC20 for IERC20;
+    using SafeCast for uint256;
 
     struct SwapConfig {
         uint8 version; // 2, 3, 4 - pack with address
@@ -59,7 +67,9 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
     // Stable token addresses for detecting when not to swap developers portion
     mapping(address => bool) public isStableToken;
 
-    // @notice Role allowed to process balances
+    /// @notice Role allowed to process balances and withdraw tokens
+    /// @dev Admin role can call process() and withdraw() functions
+    /// @dev Owner role can manage configurations, percentages, and grant/revoke admin roles
     bytes32 public adminRole;
 
     // Token contracts
@@ -82,6 +92,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      * @param _developersPercentage Percentage for developers (0-100)
      * @param _uniswapRouterAddress Universal Router contract address
      * @param _permit2Address Permit2 contract address
+     * @param _wethAddress WETH token address for the current network
      */
     function initialize(
         address _alephTokenAddress,
@@ -90,16 +101,21 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         uint8 _burnPercentage,
         uint8 _developersPercentage,
         address _uniswapRouterAddress,
-        address _permit2Address
+        address _permit2Address,
+        address _wethAddress
     ) public initializer {
         validateNonZeroAddress(_alephTokenAddress, "Invalid token address");
         validateNonZeroAddress(_distributionRecipientAddress, "Invalid distribution recipient address");
         validateNonZeroAddress(_developersRecipientAddress, "Invalid developers recipient address");
+        validateNonZeroAddress(_uniswapRouterAddress, "Invalid router address");
+        validateNonZeroAddress(_permit2Address, "Invalid permit2 address");
+        validateNonZeroAddress(_wethAddress, "Invalid WETH address");
         validatePercentages(_burnPercentage, _developersPercentage);
 
         __Ownable_init(msg.sender);
         __Ownable2Step_init();
         __AccessControl_init();
+        __ReentrancyGuard_init();
 
         adminRole = keccak256("ADMIN_ROLE");
 
@@ -115,7 +131,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
 
         router = UniversalRouter(payable(_uniswapRouterAddress));
         permit2 = IPermit2(_permit2Address);
-        wethAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        wethAddress = _wethAddress;
     }
 
     /**
@@ -123,12 +139,15 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      * @param _token Token address to process (address(0) for ETH)
      * @param _amountIn Amount to process (0 for all available balance)
      * @param _amountOutMinimum Minimum ALEPH output expected from swap
-     * @param _ttl Time to live for the transaction in seconds
+     * @param _ttl Time to live for the transaction in seconds (60-3600 seconds)
      */
     function process(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
         external
         onlyRole(adminRole)
+        nonReentrant
     {
+        require(_ttl >= 60, "TTL too short"); // Minimum 60 seconds
+        require(_ttl <= 3600, "TTL too long"); // Maximum 1 hour
         require(
             _token == address(aleph) || aleph.balanceOf(address(this)) == 0,
             "Pending ALEPH balance must be processed before"
@@ -154,12 +173,9 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
             uint256 alephBurnAmount = swapAmount > 0 ? (alephReceived * burnAmount) / swapAmount : 0;
             uint256 alephDistributionAmount = alephReceived - alephBurnAmount;
 
-            require(aleph.transfer(address(0), alephBurnAmount), "Burn transfer failed");
+            aleph.safeTransfer(address(0), alephBurnAmount);
 
-            require(
-                aleph.transfer(distributionRecipient, alephDistributionAmount),
-                "Transfer to distribution recipient failed"
-            );
+            aleph.safeTransfer(distributionRecipient, alephDistributionAmount);
 
             emit TokenPaymentsProcessed(
                 _token, msg.sender, amountIn, alephBurnAmount, alephDistributionAmount, developersAmount
@@ -173,16 +189,11 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
             (uint256 alephDevelopersAmount, uint256 alephBurnAmount, uint256 alephDistributionAmount) =
                 calculateProportions(alephReceived, cachedDevelopersPercentage, cachedBurnPercentage);
 
-            require(
-                aleph.transfer(developersRecipient, alephDevelopersAmount), "Transfer to developers recipient failed"
-            );
+            aleph.safeTransfer(developersRecipient, alephDevelopersAmount);
 
-            require(aleph.transfer(address(0), alephBurnAmount), "Burn transfer failed");
+            aleph.safeTransfer(address(0), alephBurnAmount);
 
-            require(
-                aleph.transfer(distributionRecipient, alephDistributionAmount),
-                "Transfer to distribution recipient failed"
-            );
+            aleph.safeTransfer(distributionRecipient, alephDistributionAmount);
 
             emit TokenPaymentsProcessed(
                 _token, msg.sender, amountIn, alephBurnAmount, alephDistributionAmount, alephDevelopersAmount
@@ -196,7 +207,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      * @param _to Recipient address
      * @param _amount Amount to withdraw (0 for all available balance)
      */
-    function withdraw(address _token, address payable _to, uint128 _amount) external onlyRole(adminRole) {
+    function withdraw(address _token, address payable _to, uint128 _amount) external onlyRole(adminRole) nonReentrant {
         require(
             _token != address(aleph) && swapConfig[_token].version == 0,
             "Cannot withdraw a token configured for automatic distribution"
@@ -218,7 +229,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
     function getAmountIn(address _token, uint128 _amountIn) internal view returns (uint128 amountIn) {
         uint256 balance = _token != address(0) ? IERC20(_token).balanceOf(address(this)) : address(this).balance;
 
-        amountIn = _amountIn != 0 ? _amountIn : uint128(Math.min(balance, type(uint128).max));
+        amountIn = _amountIn != 0 ? _amountIn : Math.min(balance, type(uint128).max).toUint128();
 
         // Check balance (native ETH if _token == 0x0 or ERC20 otherwise)
         require(balance >= amountIn, "Insufficient balance");
@@ -239,7 +250,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         // Transfer native ETH or ERC20 tokens
         // https://diligence.consensys.io/blog/2019/09/stop-using-soliditys-transfer-now/
         if (_token != address(0)) {
-            require(IERC20(_token).transfer(_recipient, _amount), _errorMessage);
+            IERC20(_token).safeTransfer(_recipient, _amount);
         } else {
             (bool success,) = _recipient.call{value: _amount}("");
             require(success, _errorMessage);
@@ -337,16 +348,21 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
     /**
      * @dev Grants admin role to a new address
      * @param _newAdmin Address to grant admin role
+     * @notice Only owner can grant admin roles. Admins can process payments and withdraw tokens.
+     * @notice Consider using multi-signature wallet for owner role in production
      */
     function addAdmin(address _newAdmin) external onlyOwner {
+        validateNonZeroAddress(_newAdmin, "Invalid admin address");
         _grantRole(adminRole, _newAdmin);
     }
 
     /**
      * @dev Revokes admin role from an address
      * @param _admin Address to revoke admin role
+     * @notice Only owner can revoke admin roles
      */
     function removeAdmin(address _admin) external onlyOwner {
+        validateNonZeroAddress(_admin, "Invalid admin address");
         _revokeRole(adminRole, _admin);
     }
 
@@ -366,6 +382,13 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      */
     function setSwapConfigV2(address _address, address[] calldata _v2Path) external onlyOwner {
         require(_v2Path.length >= 2, "Invalid V2 path");
+        require(_v2Path.length <= 5, "V2 path too long"); // Prevent excessive gas costs
+        require(_v2Path[_v2Path.length - 1] == address(aleph), "Path must end with ALEPH token");
+
+        // Validate no duplicate consecutive tokens in path
+        for (uint256 i = 1; i < _v2Path.length; i++) {
+            require(_v2Path[i] != _v2Path[i - 1], "Duplicate consecutive tokens in path");
+        }
 
         // Replace address(0) with WETH in the path during configuration
         address[] memory processedPath = replaceAddressZeroWithWethV2(_v2Path);
@@ -383,9 +406,19 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      */
     function setSwapConfigV3(address _address, bytes calldata _v3Path) external onlyOwner {
         require(_v3Path.length >= 43, "V3 path too short");
+        require(_v3Path.length <= 200, "V3 path too long"); // Prevent excessive gas costs
+        require(_v3Path.length % 23 == 20, "Invalid V3 path length"); // Must be 20 + n*23 bytes
+
+        // Verify path ends with ALEPH token
+        address lastToken;
+        assembly {
+            let pathEnd := add(_v3Path.offset, sub(_v3Path.length, 20))
+            lastToken := shr(96, calldataload(pathEnd))
+        }
+        require(lastToken == address(aleph), "Path must end with ALEPH token");
 
         // Replace address(0) with WETH in the path during configuration
-        bytes memory processedPath = replaceAddressZeroWithWeth(_v3Path);
+        bytes memory processedPath = replaceAddressZeroWithWethV3(_v3Path);
 
         swapConfig[_address] = SwapConfig({
             version: 3,
@@ -405,6 +438,11 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      */
     function setSwapConfigV4(address _address, PathKey[] calldata _v4Path) external onlyOwner {
         require(_v4Path.length > 0, "Empty V4 path");
+        require(_v4Path.length <= 5, "V4 path too long"); // Prevent excessive gas costs
+        require(
+            _v4Path[_v4Path.length - 1].intermediateCurrency == Currency.wrap(address(aleph)),
+            "Path must end with ALEPH token"
+        );
 
         swapConfig[_address] =
             SwapConfig({version: 4, token: _address, v4Path: _v4Path, v3Path: "", v2Path: new address[](0)});
@@ -438,7 +476,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
     /**
      * @dev Helper function to replace address(0) with WETH address in V3 encoded path
      */
-    function replaceAddressZeroWithWeth(bytes memory path) internal view returns (bytes memory) {
+    function replaceAddressZeroWithWethV3(bytes memory path) internal view returns (bytes memory) {
         if (path.length < 20) {
             return path;
         }
@@ -489,9 +527,12 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      */
     function approve(address _token, uint160 _amount, uint48 _ttl) internal {
         uint48 expiration = uint48(block.timestamp) + _ttl;
+        IERC20 token = IERC20(_token);
+
         // Only approve if current allowance is insufficient
-        if (IERC20(_token).allowance(address(this), address(permit2)) < _amount) {
-            IERC20(_token).approve(address(permit2), type(uint256).max);
+        if (token.allowance(address(this), address(permit2)) < _amount) {
+            // Use forceApprove to handle tokens that require allowance to be 0 before setting new value
+            token.forceApprove(address(permit2), type(uint256).max);
         }
         permit2.approve(_token, address(router), _amount, expiration);
     }
@@ -573,7 +614,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
             inputs[0] = abi.encode(
                 _token, // token
                 address(router), // recipient (router)
-                uint160(_amountIn) // amount
+                uint256(_amountIn).toUint160() // amount - safe cast to uint160
             );
 
             // Then swap
@@ -656,7 +697,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
             inputs[0] = abi.encode(
                 _token, // token
                 address(router), // recipient (router)
-                uint160(_amountIn) // amount
+                uint256(_amountIn).toUint160() // amount - safe cast to uint160
             );
 
             // Then swap
@@ -705,6 +746,9 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         Currency currencyIn = Currency.wrap(_token);
         PathKey[] memory path = config.v4Path;
 
+        // Record balance before swap to calculate actual amount received
+        uint256 balanceBefore = aleph.balanceOf(address(this));
+
         // Encode the Universal Router command
         // https://github.com/Uniswap/universal-router/blob/main/contracts/libraries/Commands.sol#L35
         // uint256 constant V4_SWAP = 0x10;
@@ -749,8 +793,9 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
             router.execute(commands, inputs, deadline);
         }
 
-        // Verify and return the output amount
-        amountOut = currency1.balanceOf(address(this));
+        // Calculate the actual output amount received
+        uint256 balanceAfter = aleph.balanceOf(address(this));
+        amountOut = balanceAfter - balanceBefore;
         require(amountOut >= _amountOutMinimum, "Insufficient output amount");
         return amountOut;
     }

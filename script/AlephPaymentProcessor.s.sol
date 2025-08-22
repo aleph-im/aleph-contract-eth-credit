@@ -24,6 +24,7 @@ contract AlephPaymentProcessorScript is Script {
         uint8 developersPercentage = 5; // 5% to developers
         address uniswapRouterAddress = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
         address permit2Address = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+        address wethAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // Mainnet WETH
 
         address proxy = Upgrades.deployUUPSProxy(
             "AlephPaymentProcessor.sol",
@@ -36,7 +37,8 @@ contract AlephPaymentProcessorScript is Script {
                     burnPercentage,
                     developersPercentage,
                     uniswapRouterAddress,
-                    permit2Address
+                    permit2Address,
+                    wethAddress
                 )
             )
         );

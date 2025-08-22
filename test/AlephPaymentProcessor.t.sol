@@ -20,6 +20,7 @@ contract AlephPaymentProcessorTest is Test {
     uint8 developersPercentage = 5;
     address uniswapRouterAddress = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
     address permit2Address = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+    address wethAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
     IERC20 aleph = IERC20(alephTokenAddress);
     IERC20 usdc = IERC20(usdcTokenAddress);
@@ -40,7 +41,8 @@ contract AlephPaymentProcessorTest is Test {
             burnPercentage,
             developersPercentage,
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
 
         // Set token swap config
@@ -916,7 +918,8 @@ contract AlephPaymentProcessorTest is Test {
             5,
             5,
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
 
         // Test invalid distribution recipient branch (line 88, BRDA:88,1,0)
@@ -928,7 +931,8 @@ contract AlephPaymentProcessorTest is Test {
             5,
             5,
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
 
         // Test invalid developers recipient branch (line 92, BRDA:92,2,0)
@@ -940,7 +944,8 @@ contract AlephPaymentProcessorTest is Test {
             5,
             5,
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
 
         // Test invalid burn percentage branch (line 96, BRDA:96,3,0)
@@ -952,7 +957,8 @@ contract AlephPaymentProcessorTest is Test {
             101, // Invalid burn percentage
             5,
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
 
         // Test invalid developers percentage branch (line 97, BRDA:97,4,0)
@@ -964,7 +970,8 @@ contract AlephPaymentProcessorTest is Test {
             5,
             101, // Invalid developers percentage
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
 
         // Test total percentages exceed 100% branch (line 98, BRDA:98,5,0)
@@ -976,7 +983,8 @@ contract AlephPaymentProcessorTest is Test {
             60,
             50, // 60 + 50 = 110% > 100%
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
     }
 
@@ -1322,7 +1330,8 @@ contract AlephPaymentProcessorTest is Test {
             101, // Invalid > 100
             5,
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
     }
 
@@ -1338,7 +1347,8 @@ contract AlephPaymentProcessorTest is Test {
             5,
             101, // Invalid > 100
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
     }
 
@@ -1354,7 +1364,8 @@ contract AlephPaymentProcessorTest is Test {
             60, // 60% burn
             50, // 50% developers = 110% total
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
     }
 
@@ -1499,7 +1510,8 @@ contract AlephPaymentProcessorTest is Test {
             5,
             5,
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
 
         // Test zero distribution recipient (line 76, BRDA:76,1,0)
@@ -1511,7 +1523,8 @@ contract AlephPaymentProcessorTest is Test {
             5,
             5,
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
 
         // Test zero developers recipient (line 77, BRDA:77,2,0)
@@ -1523,7 +1536,8 @@ contract AlephPaymentProcessorTest is Test {
             5,
             5,
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
     }
 
@@ -1766,17 +1780,32 @@ contract AlephPaymentProcessorTest is Test {
             5,
             5,
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
 
         vm.expectRevert("Invalid distribution recipient address");
         processor2.initialize(
-            alephTokenAddress, address(0), developersRecipientAddress, 5, 5, uniswapRouterAddress, permit2Address
+            alephTokenAddress,
+            address(0),
+            developersRecipientAddress,
+            5,
+            5,
+            uniswapRouterAddress,
+            permit2Address,
+            wethAddress
         );
 
         vm.expectRevert("Invalid developers recipient address");
         processor3.initialize(
-            alephTokenAddress, distributionRecipientAddress, address(0), 5, 5, uniswapRouterAddress, permit2Address
+            alephTokenAddress,
+            distributionRecipientAddress,
+            address(0),
+            5,
+            5,
+            uniswapRouterAddress,
+            permit2Address,
+            wethAddress
         );
 
         vm.expectRevert("Invalid burn percentage");
@@ -1787,7 +1816,8 @@ contract AlephPaymentProcessorTest is Test {
             101,
             5,
             uniswapRouterAddress,
-            permit2Address
+            permit2Address,
+            wethAddress
         );
 
         // Test main contract parameter validation branches
@@ -2622,12 +2652,8 @@ contract AlephPaymentProcessorTest is Test {
         invalidPath[1] = wethTokenAddress; // Same as previous - invalid
         invalidPath[2] = alephTokenAddress;
 
+        vm.expectRevert("Duplicate consecutive tokens in path");
         alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, invalidPath);
-        deal(wethTokenAddress, contractAddress, 1 ether);
-
-        // Should fail when trying to swap due to invalid pair
-        vm.expectRevert();
-        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 60);
     }
 
     function test_V2_extremely_long_path() public {
@@ -2643,14 +2669,8 @@ contract AlephPaymentProcessorTest is Test {
         longPath[4] = wethTokenAddress; // Back to WETH
         longPath[5] = alephTokenAddress;
 
+        vm.expectRevert("V2 path too long");
         alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, longPath);
-        deal(wethTokenAddress, contractAddress, 1 ether);
-
-        // May fail due to insufficient liquidity or gas limits
-        // But configuration should succeed
-        AlephPaymentProcessor.SwapConfig memory config = alephPaymentProcessor.getSwapConfig(wethTokenAddress);
-        vm.assertEq(config.version, 2);
-        vm.assertEq(config.v2Path.length, 6);
     }
 
     function test_V2_zero_amount_swap() public {
@@ -2719,10 +2739,9 @@ contract AlephPaymentProcessorTest is Test {
 
         deal(wethTokenAddress, contractAddress, 1 ether);
 
-        // Try with very short TTL (1 second) - this actually succeeds because TTL is applied at execution time
-        // Not expecting revert as the permit2 approval happens just before execution
-        // Main goal is to verify it doesn't revert
-        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 1);
+        // Try with extremely short TTL (30 seconds is now minimum)
+        vm.expectRevert("TTL too short");
+        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 30);
     }
 
     function test_V2_nonexistent_pair_path() public {
@@ -2734,12 +2753,8 @@ contract AlephPaymentProcessorTest is Test {
         invalidPath[0] = wethTokenAddress;
         invalidPath[1] = randomToken; // This pair likely doesn't exist
 
+        vm.expectRevert("Path must end with ALEPH token");
         alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, invalidPath);
-        deal(wethTokenAddress, contractAddress, 1 ether);
-
-        // Should fail when trying to swap
-        vm.expectRevert();
-        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 60);
     }
 
     // ============ V3 CORNER CASE TESTS ============
@@ -2776,12 +2791,8 @@ contract AlephPaymentProcessorTest is Test {
             oddPath[i] = bytes1(uint8(i % 256));
         }
 
+        vm.expectRevert("Invalid V3 path length");
         alephPaymentProcessor.setSwapConfigV3(testToken, oddPath);
-        deal(testToken, contractAddress, 1000 * 1e6);
-
-        // Should fail during swap due to invalid path encoding
-        vm.expectRevert();
-        alephPaymentProcessor.process(testToken, 100 * 1e6, 0, 60);
     }
 
     function test_V3_unsupported_fee_tier() public {
@@ -2838,12 +2849,8 @@ contract AlephPaymentProcessorTest is Test {
             wethTokenAddress // Same token - invalid for swapping
         );
 
+        vm.expectRevert("Path must end with ALEPH token");
         alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, selfSwapPath);
-        deal(wethTokenAddress, contractAddress, 1 ether);
-
-        // Should fail during swap
-        vm.expectRevert();
-        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 60);
     }
 
     function test_V3_address_replacement_multiple_zeros() public {
@@ -2881,7 +2888,7 @@ contract AlephPaymentProcessorTest is Test {
     function test_V3_native_ETH_to_ALEPH_swap() public {
         // Configure V3 path for native ETH (address(0)) - path contains address(0) which gets replaced with WETH
         bytes memory path = abi.encodePacked(
-            address(0), // This gets replaced with WETH in replaceAddressZeroWithWeth
+            address(0), // This gets replaced with WETH in replaceAddressZeroWithWethV3
             uint24(10000),
             alephTokenAddress
         );
