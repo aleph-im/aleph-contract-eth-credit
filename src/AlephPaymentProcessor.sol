@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {UniversalRouter} from "@uniswap/universal-router/contracts/UniversalRouter.sol";
-import {Commands} from "@uniswap/universal-router/contracts/libraries/Commands.sol";
+// import {Commands} from "@uniswap/universal-router/contracts/libraries/Commands.sol";
 import {IV4Router} from "@uniswap/v4-periphery/src/interfaces/IV4Router.sol";
 import {Actions} from "@uniswap/v4-periphery/src/libraries/Actions.sol";
 import {IPermit2} from "@uniswap/permit2/src/interfaces/IPermit2.sol";
@@ -51,10 +51,10 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
     mapping(address => bool) public isStableToken;
 
     // @notice Role allowed to process balances
-    bytes32 public ADMIN_ROLE;
+    bytes32 public adminRole;
 
     // Token contracts
-    IERC20 internal ALEPH;
+    IERC20 internal aleph;
 
     // Uniswap v4 utils
     UniversalRouter internal router;
@@ -83,12 +83,12 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         __Ownable2Step_init();
         __AccessControl_init();
 
-        ADMIN_ROLE = keccak256("ADMIN_ROLE");
+        adminRole = keccak256("ADMIN_ROLE");
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(ADMIN_ROLE, msg.sender);
+        _grantRole(adminRole, msg.sender);
 
-        ALEPH = IERC20(_alephTokenAddress);
+        aleph = IERC20(_alephTokenAddress);
 
         distributionRecipient = _distributionRecipientAddress;
         developersRecipient = _developersRecipientAddress;
@@ -101,10 +101,10 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
 
     function process(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
         external
-        onlyRole(ADMIN_ROLE)
+        onlyRole(adminRole)
     {
         require(
-            _token == address(ALEPH) || ALEPH.balanceOf(address(this)) == 0,
+            _token == address(aleph) || aleph.balanceOf(address(this)) == 0,
             "Pending ALEPH balance must be processed before"
         );
 
@@ -117,7 +117,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         uint256 burnAmount = (uint256(amountIn) * cachedBurnPercentage) / 100;
         uint256 distributionAmount = uint256(amountIn) - developersAmount - burnAmount;
 
-        if (isStableToken[_token] && _token != address(ALEPH)) {
+        if (isStableToken[_token] && _token != address(aleph)) {
             // For stable tokens: send developers portion directly, swap the rest
             if (_token != address(0)) {
                 require(
@@ -137,10 +137,10 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
             uint256 alephBurnAmount = swapAmount > 0 ? (alephReceived * burnAmount) / swapAmount : 0;
             uint256 alephDistributionAmount = alephReceived - alephBurnAmount;
 
-            require(ALEPH.transfer(address(0), alephBurnAmount), "Burn transfer failed");
+            require(aleph.transfer(address(0), alephBurnAmount), "Burn transfer failed");
 
             require(
-                ALEPH.transfer(distributionRecipient, alephDistributionAmount),
+                aleph.transfer(distributionRecipient, alephDistributionAmount),
                 "Transfer to distribution recipient failed"
             );
 
@@ -150,7 +150,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         } else {
             // For non-stable tokens or ALEPH: swap entire amount, then distribute proportionally
             uint256 alephReceived =
-                _token != address(ALEPH) ? swapV4(_token, amountIn, _amountOutMinimum, _ttl) : amountIn;
+                _token != address(aleph) ? swapV4(_token, amountIn, _amountOutMinimum, _ttl) : amountIn;
 
             // Calculate ALEPH amounts based on original input percentages
             uint256 alephDevelopersAmount = (alephReceived * cachedDevelopersPercentage) / 100;
@@ -158,13 +158,13 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
             uint256 alephDistributionAmount = alephReceived - alephDevelopersAmount - alephBurnAmount;
 
             require(
-                ALEPH.transfer(developersRecipient, alephDevelopersAmount), "Transfer to developers recipient failed"
+                aleph.transfer(developersRecipient, alephDevelopersAmount), "Transfer to developers recipient failed"
             );
 
-            require(ALEPH.transfer(address(0), alephBurnAmount), "Burn transfer failed");
+            require(aleph.transfer(address(0), alephBurnAmount), "Burn transfer failed");
 
             require(
-                ALEPH.transfer(distributionRecipient, alephDistributionAmount),
+                aleph.transfer(distributionRecipient, alephDistributionAmount),
                 "Transfer to distribution recipient failed"
             );
 
@@ -174,9 +174,9 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         }
     }
 
-    function withdraw(address _token, address payable _to, uint128 _amount) external onlyRole(ADMIN_ROLE) {
+    function withdraw(address _token, address payable _to, uint128 _amount) external onlyRole(adminRole) {
         require(
-            _token != address(ALEPH) && tokenConfig[_token].version == 0,
+            _token != address(aleph) && tokenConfig[_token].version == 0,
             "Cannot withdraw a token configured for automatic distribution"
         );
 
@@ -241,11 +241,11 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
     }
 
     function addAdmin(address _newAdmin) external onlyOwner {
-        _grantRole(ADMIN_ROLE, _newAdmin);
+        _grantRole(adminRole, _newAdmin);
     }
 
     function removeAdmin(address _admin) external onlyOwner {
-        _revokeRole(ADMIN_ROLE, _admin);
+        _revokeRole(adminRole, _admin);
     }
 
     function getTokenConfig(address _address) external view returns (TokenConfig memory) {
@@ -272,7 +272,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      */
     receive() external payable {}
 
-    function approve(address _token, uint160 _amount, uint48 _ttl) internal onlyRole(ADMIN_ROLE) {
+    function approve(address _token, uint160 _amount, uint48 _ttl) internal onlyRole(adminRole) {
         uint48 expiration = uint48(block.timestamp) + _ttl;
         // Only approve if current allowance is insufficient
         if (IERC20(_token).allowance(address(this), address(permit2)) < _amount) {
@@ -284,7 +284,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
     // https://docs.uniswap.org/contracts/v4/quickstart/swap
     function swapV4(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
         internal
-        onlyRole(ADMIN_ROLE)
+        onlyRole(adminRole)
         returns (uint256 amountOut)
     {
         TokenConfig memory config = tokenConfig[_token];
