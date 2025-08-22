@@ -41,18 +41,26 @@ contract AlephPaymentProcessor is
         address indexed sender,
         uint256 amount,
         uint256 amountBurned,
-        uint256 amountSent
+        uint256 amountToDistribution,
+        uint256 amountToDevelopers
     );
 
     // Events for parameter updates
     event TokenConfigUpdated(address indexed token, uint8 version);
     event TokenConfigRemoved(address indexed token, uint8 version);
-    event RecipientUpdated(address indexed recipient);
+    event DistributionRecipientUpdated(address indexed recipient);
+    event DevelopersRecipientUpdated(address indexed recipient);
     event BurnPercentageUpdated(uint8 percentage);
+    event DevelopersPercentageUpdated(uint8 percentage);
 
     // Payment settings
-    address public recipient; // Address that receives the non-burned portion of payments
+    address public distributionRecipient; // Address that receives the distribution portion of payments
+    address public developersRecipient; // Address that receives the developers portion of payments
     uint8 public burnPercentage; // Percentage of tokens to burn (0-100)
+    uint8 public developersPercentage; // Percentage of tokens to send to developers (0-100)
+
+    // Stable token addresses for detecting when not to swap developers portion
+    mapping(address => bool) public isStableToken;
 
     // @notice Role allowed to process balances
     bytes32 public ADMIN_ROLE;
@@ -69,14 +77,28 @@ contract AlephPaymentProcessor is
 
     function initialize(
         address _alephTokenAddress,
-        address _recipientAddress,
+        address _distributionRecipientAddress,
+        address _developersRecipientAddress,
         uint8 _burnPercentage,
+        uint8 _developersPercentage,
         address _uniswapRouterAddress,
         address _permit2Address
     ) public initializer {
         require(_alephTokenAddress != address(0), "Invalid token address");
-        require(_recipientAddress != address(0), "Invalid recipient address");
+        require(
+            _distributionRecipientAddress != address(0),
+            "Invalid distribution recipient address"
+        );
+        require(
+            _developersRecipientAddress != address(0),
+            "Invalid developers recipient address"
+        );
         require(_burnPercentage < 101, "Invalid burn percentage");
+        require(_developersPercentage < 101, "Invalid developers percentage");
+        require(
+            _burnPercentage + _developersPercentage <= 100,
+            "Total percentages exceed 100%"
+        );
 
         __Ownable_init(msg.sender);
         __Ownable2Step_init();
@@ -89,8 +111,10 @@ contract AlephPaymentProcessor is
 
         ALEPH = IERC20(_alephTokenAddress);
 
-        recipient = _recipientAddress;
+        distributionRecipient = _distributionRecipientAddress;
+        developersRecipient = _developersRecipientAddress;
         burnPercentage = _burnPercentage;
+        developersPercentage = _developersPercentage;
 
         router = UniversalRouter(payable(_uniswapRouterAddress));
         permit2 = IPermit2(_permit2Address);
@@ -109,32 +133,102 @@ contract AlephPaymentProcessor is
 
         uint128 amountIn = getAmountIn(_token, _amountIn);
 
-        uint256 alephReceived = _token != address(ALEPH)
-            ? swapV4(_token, amountIn, _amountOutMinimum, _ttl)
-            : amountIn;
+        // Calculate portions from initial amount: 5% developers, 5% burn, 90% distribution
+        uint256 developersAmount = (uint256(amountIn) * developersPercentage) /
+            100;
+        uint256 burnAmount = (uint256(amountIn) * burnPercentage) / 100;
+        uint256 distributionAmount = uint256(amountIn) -
+            developersAmount -
+            burnAmount;
 
-        // Calculate burn and send amounts based on the burn percentage
-        uint256 amountToBurn = (alephReceived * burnPercentage) / 100;
-        uint256 amountToSend = alephReceived - amountToBurn;
+        if (isStableToken[_token] && _token != address(ALEPH)) {
+            // For stable tokens: send developers portion directly, swap the rest
+            if (_token != address(0)) {
+                require(
+                    IERC20(_token).transfer(
+                        developersRecipient,
+                        developersAmount
+                    ),
+                    "Transfer to developers recipient failed"
+                );
+            } else {
+                (bool success, ) = developersRecipient.call{
+                    value: developersAmount
+                }("");
+                require(success, "ETH transfer to developers recipient failed");
+            }
 
-        // Transfer tokens to burn address (0x0) as burn functionality
-        require(
-            ALEPH.transfer(address(0), amountToBurn),
-            "Burn transfer failed"
-        );
+            // Swap burn + distribution portions to ALEPH
+            uint256 swapAmount = burnAmount + distributionAmount;
+            uint256 alephReceived = swapV4(
+                _token,
+                uint128(swapAmount),
+                _amountOutMinimum,
+                _ttl
+            );
 
-        require(
-            ALEPH.transfer(recipient, amountToSend),
-            "Transfer to recipient failed"
-        );
+            // Calculate proportional ALEPH amounts based on original percentages
+            uint256 alephBurnAmount = swapAmount > 0
+                ? (alephReceived * burnAmount) / swapAmount
+                : 0;
+            uint256 alephDistributionAmount = alephReceived - alephBurnAmount;
 
-        emit TokenPaymentsProcessed(
-            _token,
-            msg.sender,
-            amountIn,
-            amountToBurn,
-            amountToSend
-        );
+            require(
+                ALEPH.transfer(address(0), alephBurnAmount),
+                "Burn transfer failed"
+            );
+
+            require(
+                ALEPH.transfer(distributionRecipient, alephDistributionAmount),
+                "Transfer to distribution recipient failed"
+            );
+
+            emit TokenPaymentsProcessed(
+                _token,
+                msg.sender,
+                amountIn,
+                alephBurnAmount,
+                alephDistributionAmount,
+                developersAmount
+            );
+        } else {
+            // For non-stable tokens or ALEPH: swap entire amount, then distribute proportionally
+            uint256 alephReceived = _token != address(ALEPH)
+                ? swapV4(_token, amountIn, _amountOutMinimum, _ttl)
+                : amountIn;
+
+            // Calculate ALEPH amounts based on original input percentages
+            uint256 alephDevelopersAmount = (alephReceived *
+                developersPercentage) / 100;
+            uint256 alephBurnAmount = (alephReceived * burnPercentage) / 100;
+            uint256 alephDistributionAmount = alephReceived -
+                alephDevelopersAmount -
+                alephBurnAmount;
+
+            require(
+                ALEPH.transfer(developersRecipient, alephDevelopersAmount),
+                "Transfer to developers recipient failed"
+            );
+
+            require(
+                ALEPH.transfer(address(0), alephBurnAmount),
+                "Burn transfer failed"
+            );
+
+            require(
+                ALEPH.transfer(distributionRecipient, alephDistributionAmount),
+                "Transfer to distribution recipient failed"
+            );
+
+            emit TokenPaymentsProcessed(
+                _token,
+                msg.sender,
+                amountIn,
+                alephBurnAmount,
+                alephDistributionAmount,
+                alephDevelopersAmount
+            );
+        }
     }
 
     function withdraw(
@@ -186,14 +280,53 @@ contract AlephPaymentProcessor is
 
     function setBurnPercentage(uint8 _newBurnPercentage) external onlyOwner {
         require(_newBurnPercentage < 101, "Invalid burn percentage");
+        require(
+            _newBurnPercentage + developersPercentage <= 100,
+            "Total percentages exceed 100%"
+        );
         burnPercentage = _newBurnPercentage;
         emit BurnPercentageUpdated(_newBurnPercentage);
     }
 
-    function setRecipient(address _newRecipient) external onlyOwner {
-        require(_newRecipient != address(0), "Invalid recipient address");
-        recipient = _newRecipient;
-        emit RecipientUpdated(_newRecipient);
+    function setDevelopersPercentage(
+        uint8 _newDevelopersPercentage
+    ) external onlyOwner {
+        require(
+            _newDevelopersPercentage < 101,
+            "Invalid developers percentage"
+        );
+        require(
+            burnPercentage + _newDevelopersPercentage <= 100,
+            "Total percentages exceed 100%"
+        );
+        developersPercentage = _newDevelopersPercentage;
+        emit DevelopersPercentageUpdated(_newDevelopersPercentage);
+    }
+
+    function setDistributionRecipient(
+        address _newDistributionRecipient
+    ) external onlyOwner {
+        require(
+            _newDistributionRecipient != address(0),
+            "Invalid distribution recipient address"
+        );
+        distributionRecipient = _newDistributionRecipient;
+        emit DistributionRecipientUpdated(_newDistributionRecipient);
+    }
+
+    function setDevelopersRecipient(
+        address _newDevelopersRecipient
+    ) external onlyOwner {
+        require(
+            _newDevelopersRecipient != address(0),
+            "Invalid developers recipient address"
+        );
+        developersRecipient = _newDevelopersRecipient;
+        emit DevelopersRecipientUpdated(_newDevelopersRecipient);
+    }
+
+    function setStableToken(address _token, bool _isStable) external onlyOwner {
+        isStableToken[_token] = _isStable;
     }
 
     function addAdmin(address _newAdmin) external onlyOwner {

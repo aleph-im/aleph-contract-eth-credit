@@ -18,8 +18,10 @@ contract AlephPaymentProcessorScript is Script {
         vm.startBroadcast();
 
         address alephTokenAddress = 0x27702a26126e0B3702af63Ee09aC4d1A084EF628;
-        address recipientAddress = address(0); // "TODO"
-        uint8 burnPercentage = 20;
+        address distributionRecipientAddress = address(0); // "TODO"
+        address developersRecipientAddress = address(0); // "TODO"
+        uint8 burnPercentage = 5; // 5% burn
+        uint8 developersPercentage = 5; // 5% to developers
         address uniswapRouterAddress = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
         address permit2Address = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
@@ -29,8 +31,10 @@ contract AlephPaymentProcessorScript is Script {
                 AlephPaymentProcessor.initialize,
                 (
                     alephTokenAddress,
-                    recipientAddress,
+                    distributionRecipientAddress,
+                    developersRecipientAddress,
                     burnPercentage,
+                    developersPercentage,
                     uniswapRouterAddress,
                     permit2Address
                 )
@@ -63,8 +67,13 @@ contract AlephPaymentProcessorScript is Script {
         });
         alephPaymentProcessor.setTokenConfigV4(usdcTokenAddress, usdcPath);
 
+        // Set USDC as stable token
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
+
         console.log(proxy);
-        console.log(alephPaymentProcessor.recipient());
+        console.log(alephPaymentProcessor.distributionRecipient());
+        console.log(alephPaymentProcessor.developersRecipient());
         console.log(alephPaymentProcessor.burnPercentage());
+        console.log(alephPaymentProcessor.developersPercentage());
     }
 }

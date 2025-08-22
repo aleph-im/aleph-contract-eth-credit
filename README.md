@@ -9,6 +9,31 @@ Foundry consists of:
 -   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
 -   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
 
+## Install
+
+### foundry
+
+```sh
+# Download foundry installer `foundryup`
+$ curl -L https://foundry.paradigm.xyz | bash
+
+# Install forge, cast, anvil, chisel
+$ foundryup
+
+# Install the latest nightly release
+$ foundryup -i nightly
+```
+
+### lcov (coverage reports)
+
+```sh
+# Linux
+$ sudo apt-get update sudo apt-get install lcov
+
+# macOS
+$ brew install lcov
+```
+
 ## Documentation
 
 https://book.getfoundry.sh/
