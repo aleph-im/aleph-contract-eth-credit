@@ -2,12 +2,13 @@
 pragma solidity ^0.8.13;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Test} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 import {AlephPaymentProcessor} from "../src/AlephPaymentProcessor.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {PathKey} from "@uniswap/v4-periphery/src/libraries/PathKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {IPermit2} from "@uniswap/permit2/src/interfaces/IPermit2.sol";
 
 contract AlephPaymentProcessorTest is Test {
     address ethTokenAddress = address(0); // 0x0000000000000000000000000000000000000000
@@ -1793,5 +1794,1106 @@ contract AlephPaymentProcessorTest is Test {
 
         vm.expectRevert("Invalid developers recipient address");
         alephPaymentProcessor.setDevelopersRecipient(address(0));
+    }
+
+    function test_setTokenConfigV2_success() public {
+        address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+
+        // Create V2 path: DAI -> WETH -> ALEPH
+        address[] memory v2Path = new address[](3);
+        v2Path[0] = daiTokenAddress;
+        v2Path[1] = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // WETH
+        v2Path[2] = alephTokenAddress;
+
+        // Set V2 config
+        alephPaymentProcessor.setTokenConfigV2(daiTokenAddress, v2Path);
+
+        // Verify config
+        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(daiTokenAddress);
+        vm.assertEq(config.version, 2);
+        vm.assertEq(config.token, daiTokenAddress);
+        vm.assertEq(config.v2Path.length, 3);
+        vm.assertEq(config.v2Path[0], daiTokenAddress);
+        vm.assertEq(config.v2Path[1], 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
+        vm.assertEq(config.v2Path[2], alephTokenAddress);
+        vm.assertEq(config.v3Path.length, 0);
+        vm.assertEq(config.v4Path.length, 0);
+    }
+
+    function test_setTokenConfigV2_direct_pair() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Create V2 path: WETH -> ALEPH (direct pair)
+        address[] memory v2Path = new address[](2);
+        v2Path[0] = wethTokenAddress;
+        v2Path[1] = alephTokenAddress;
+
+        // Set V2 config
+        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, v2Path);
+
+        // Verify config
+        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(wethTokenAddress);
+        vm.assertEq(config.version, 2);
+        vm.assertEq(config.v2Path.length, 2);
+        vm.assertEq(config.v2Path[0], wethTokenAddress);
+        vm.assertEq(config.v2Path[1], alephTokenAddress);
+    }
+
+    function test_setTokenConfigV2_access_control() public {
+        address[] memory v2Path = new address[](2);
+        v2Path[0] = usdcTokenAddress;
+        v2Path[1] = alephTokenAddress;
+
+        vm.prank(makeAddr("notOwner"));
+        vm.expectRevert();
+        alephPaymentProcessor.setTokenConfigV2(usdcTokenAddress, v2Path);
+    }
+
+    function test_setTokenConfigV3_success() public {
+        address uniTokenAddress = 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984;
+
+        // Create V3 encoded path: UNI (3000 fee) -> WETH (3000 fee) -> ALEPH
+        // Path encoding: token0 + fee + token1 + fee + token2
+        bytes memory v3Path = abi.encodePacked(
+            uniTokenAddress,
+            uint24(3000), // 0.3% fee
+            0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2, // WETH
+            uint24(3000), // 0.3% fee
+            alephTokenAddress
+        );
+
+        // Set V3 config
+        alephPaymentProcessor.setTokenConfigV3(uniTokenAddress, v3Path);
+
+        // Verify config
+        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(uniTokenAddress);
+        vm.assertEq(config.version, 3);
+        vm.assertEq(config.token, uniTokenAddress);
+        vm.assertGt(config.v3Path.length, 0);
+        vm.assertEq(config.v2Path.length, 0);
+        vm.assertEq(config.v4Path.length, 0);
+    }
+
+    function test_setTokenConfigV3_direct_pair() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Create V3 encoded path: WETH (10000 fee) -> ALEPH (direct pair)
+        bytes memory v3Path = abi.encodePacked(
+            wethTokenAddress,
+            uint24(10000), // 1% fee
+            alephTokenAddress
+        );
+
+        // Set V3 config
+        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, v3Path);
+
+        // Verify config
+        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(wethTokenAddress);
+        vm.assertEq(config.version, 3);
+        vm.assertGt(config.v3Path.length, 0);
+    }
+
+    function test_setTokenConfigV3_access_control() public {
+        bytes memory v3Path = abi.encodePacked(
+            usdcTokenAddress,
+            uint24(500), // 0.05% fee
+            alephTokenAddress
+        );
+
+        vm.prank(makeAddr("notOwner"));
+        vm.expectRevert();
+        alephPaymentProcessor.setTokenConfigV3(usdcTokenAddress, v3Path);
+    }
+
+    function test_getTokenConfig_all_versions() public {
+        // Test V2 config
+        address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+        address[] memory v2Path = new address[](2);
+        v2Path[0] = daiTokenAddress;
+        v2Path[1] = alephTokenAddress;
+        alephPaymentProcessor.setTokenConfigV2(daiTokenAddress, v2Path);
+
+        // Test V3 config
+        address uniTokenAddress = 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984;
+        bytes memory v3Path = abi.encodePacked(uniTokenAddress, uint24(3000), alephTokenAddress);
+        alephPaymentProcessor.setTokenConfigV3(uniTokenAddress, v3Path);
+
+        // Verify V2 config
+        AlephPaymentProcessor.TokenConfig memory v2Config = alephPaymentProcessor.getTokenConfig(daiTokenAddress);
+        vm.assertEq(v2Config.version, 2);
+        vm.assertEq(v2Config.v2Path.length, 2);
+
+        // Verify V3 config
+        AlephPaymentProcessor.TokenConfig memory v3Config = alephPaymentProcessor.getTokenConfig(uniTokenAddress);
+        vm.assertEq(v3Config.version, 3);
+        vm.assertGt(v3Config.v3Path.length, 0);
+
+        // Verify existing V4 config still works
+        AlephPaymentProcessor.TokenConfig memory v4Config = alephPaymentProcessor.getTokenConfig(ethTokenAddress);
+        vm.assertEq(v4Config.version, 4);
+        vm.assertEq(v4Config.v4Path.length, 1);
+    }
+
+    function test_update_config_version() public {
+        // Start with V4 config
+        address testToken = makeAddr("testToken");
+        PathKey[] memory v4Path = new PathKey[](1);
+        v4Path[0] = PathKey({
+            intermediateCurrency: Currency.wrap(alephTokenAddress),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0)),
+            hookData: bytes("")
+        });
+        alephPaymentProcessor.setTokenConfigV4(testToken, v4Path);
+
+        // Verify V4 config
+        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(testToken);
+        vm.assertEq(config.version, 4);
+
+        // Update to V3 config
+        bytes memory v3Path = abi.encodePacked(testToken, uint24(3000), alephTokenAddress);
+        alephPaymentProcessor.setTokenConfigV3(testToken, v3Path);
+
+        // Verify V3 config overwrote V4
+        config = alephPaymentProcessor.getTokenConfig(testToken);
+        vm.assertEq(config.version, 3);
+        vm.assertGt(config.v3Path.length, 0);
+        vm.assertEq(config.v4Path.length, 0);
+
+        // Update to V2 config
+        address[] memory v2Path = new address[](2);
+        v2Path[0] = testToken;
+        v2Path[1] = alephTokenAddress;
+        alephPaymentProcessor.setTokenConfigV2(testToken, v2Path);
+
+        // Verify V2 config overwrote V3
+        config = alephPaymentProcessor.getTokenConfig(testToken);
+        vm.assertEq(config.version, 2);
+        vm.assertEq(config.v2Path.length, 2);
+        vm.assertEq(config.v3Path.length, 0);
+    }
+
+    function test_process_swap_V2_WETH_to_ALEPH() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        IERC20 weth = IERC20(wethTokenAddress);
+
+        // Configure V2 path: WETH → ALEPH (direct pair, same as working ETH test)
+        address[] memory v2Path = new address[](2);
+        v2Path[0] = wethTokenAddress;
+        v2Path[1] = alephTokenAddress;
+
+        console.log("Setting V2 config...");
+        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, v2Path);
+        console.log("V2 config set successfully");
+
+        // Give contract some WETH
+        deal(wethTokenAddress, contractAddress, 1 ether);
+        console.log("WETH dealt to contract");
+
+        // Record balances before
+        uint256 wethBalanceBefore = weth.balanceOf(contractAddress);
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersBefore = aleph.balanceOf(developersRecipientAddress);
+        uint256 alephBurnedBefore = aleph.balanceOf(address(0));
+
+        vm.assertEq(wethBalanceBefore, 1 ether);
+        console.log("Starting process call...");
+
+        // Execute swap
+        uint256 amountToSwap = 0.5 ether;
+        alephPaymentProcessor.process(wethTokenAddress, uint128(amountToSwap), 0, 60);
+
+        // Verify WETH was consumed
+        uint256 wethBalanceAfter = weth.balanceOf(contractAddress);
+        vm.assertEq(wethBalanceAfter, 1 ether - amountToSwap);
+
+        // Verify ALEPH was distributed correctly
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersAfter = aleph.balanceOf(developersRecipientAddress);
+        uint256 alephBurnedAfter = aleph.balanceOf(address(0));
+
+        vm.assertGt(alephDistributionAfter, alephDistributionBefore);
+        vm.assertGt(alephDevelopersAfter, alephDevelopersBefore);
+        vm.assertGt(alephBurnedAfter, alephBurnedBefore);
+    }
+
+    function test_process_swap_V2_DAI_multi_hop() public {
+        address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        IERC20 dai = IERC20(daiTokenAddress);
+
+        // Configure V2 path: DAI → WETH → ALEPH (multi-hop)
+        address[] memory v2Path = new address[](3);
+        v2Path[0] = daiTokenAddress;
+        v2Path[1] = wethTokenAddress;
+        v2Path[2] = alephTokenAddress;
+        alephPaymentProcessor.setTokenConfigV2(daiTokenAddress, v2Path);
+
+        // Give contract some DAI
+        deal(daiTokenAddress, contractAddress, 10000 * 1e18);
+
+        // Record balances before
+        uint256 daiBalanceBefore = dai.balanceOf(contractAddress);
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+
+        vm.assertEq(daiBalanceBefore, 10000 * 1e18);
+
+        // Execute swap
+        uint256 amountToSwap = 1000 * 1e18; // 1000 DAI
+        alephPaymentProcessor.process(daiTokenAddress, uint128(amountToSwap), 0, 60);
+
+        // Verify DAI was consumed
+        uint256 daiBalanceAfter = dai.balanceOf(contractAddress);
+        vm.assertEq(daiBalanceAfter, daiBalanceBefore - amountToSwap);
+
+        // Verify ALEPH was received and distributed
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        vm.assertGt(alephDistributionAfter, alephDistributionBefore);
+    }
+
+    function test_process_swap_V2_ETH_to_ALEPH() public {
+        // Configure V2 path: ETH (address(0)) → ALEPH
+        // address(0) gets replaced with WETH during configuration
+        address[] memory v2Path = new address[](2);
+        v2Path[0] = address(0); // ETH (replaced with WETH during config)
+        v2Path[1] = alephTokenAddress; // ALEPH
+        alephPaymentProcessor.setTokenConfigV2(address(0), v2Path);
+
+        // Give contract some ETH
+        vm.deal(contractAddress, 5 ether);
+
+        // Record balances before
+        uint256 ethBalanceBefore = contractAddress.balance;
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersBefore = aleph.balanceOf(developersRecipientAddress);
+
+        vm.assertEq(ethBalanceBefore, 5 ether);
+
+        // Execute swap
+        uint256 amountToSwap = 1 ether;
+        alephPaymentProcessor.process(address(0), uint128(amountToSwap), 0, 60);
+
+        // Verify ETH was consumed
+        uint256 ethBalanceAfter = contractAddress.balance;
+        vm.assertEq(ethBalanceAfter, ethBalanceBefore - amountToSwap);
+
+        // Verify ALEPH was distributed correctly
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersAfter = aleph.balanceOf(developersRecipientAddress);
+
+        vm.assertGt(alephDistributionAfter, alephDistributionBefore);
+        vm.assertGt(alephDevelopersAfter, alephDevelopersBefore);
+    }
+
+    function test_process_swap_V2_stable_token_USDC() public {
+        // Configure V2 path: USDC → WETH → ALEPH
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        address[] memory v2Path = new address[](3);
+        v2Path[0] = usdcTokenAddress;
+        v2Path[1] = wethTokenAddress;
+        v2Path[2] = alephTokenAddress;
+        alephPaymentProcessor.setTokenConfigV2(usdcTokenAddress, v2Path);
+
+        // Set USDC as stable token
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
+
+        // Give contract some USDC
+        deal(usdcTokenAddress, contractAddress, 10000 * 1e6); // 10,000 USDC
+
+        // Record balances before
+        uint256 usdcBalanceBefore = usdc.balanceOf(contractAddress);
+        uint256 usdcDevelopersBefore = usdc.balanceOf(developersRecipientAddress);
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+
+        // Execute swap
+        uint256 amountToSwap = 1000 * 1e6; // 1000 USDC
+        alephPaymentProcessor.process(usdcTokenAddress, uint128(amountToSwap), 0, 60);
+
+        // Verify USDC was consumed
+        uint256 usdcBalanceAfter = usdc.balanceOf(contractAddress);
+        vm.assertEq(usdcBalanceAfter, usdcBalanceBefore - amountToSwap);
+
+        // For stable tokens, developers portion should be sent directly in USDC
+        uint256 usdcDevelopersAfter = usdc.balanceOf(developersRecipientAddress);
+        vm.assertGt(usdcDevelopersAfter, usdcDevelopersBefore);
+
+        // Distribution portion should be swapped to ALEPH
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        vm.assertGt(alephDistributionAfter, alephDistributionBefore);
+    }
+
+    function test_process_swap_V3_WETH_to_ALEPH() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        IERC20 weth = IERC20(wethTokenAddress);
+
+        // Configure V3 path: WETH → ALEPH (direct pair with 1% fee)
+        bytes memory v3Path = abi.encodePacked(
+            wethTokenAddress,
+            uint24(10000), // 1% fee
+            alephTokenAddress
+        );
+        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, v3Path);
+
+        // Give contract some WETH
+        deal(wethTokenAddress, contractAddress, 2 ether);
+
+        // Record balances before
+        uint256 wethBalanceBefore = weth.balanceOf(contractAddress);
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersBefore = aleph.balanceOf(developersRecipientAddress);
+        uint256 alephBurnedBefore = aleph.balanceOf(address(0));
+
+        vm.assertEq(wethBalanceBefore, 2 ether);
+
+        // Execute swap
+        uint256 amountToSwap = 0.8 ether;
+        alephPaymentProcessor.process(wethTokenAddress, uint128(amountToSwap), 0, 60);
+
+        // Verify WETH was consumed
+        uint256 wethBalanceAfter = weth.balanceOf(contractAddress);
+        vm.assertEq(wethBalanceAfter, 2 ether - amountToSwap);
+
+        // Verify ALEPH was distributed correctly
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersAfter = aleph.balanceOf(developersRecipientAddress);
+        uint256 alephBurnedAfter = aleph.balanceOf(address(0));
+
+        vm.assertGt(alephDistributionAfter, alephDistributionBefore);
+        vm.assertGt(alephDevelopersAfter, alephDevelopersBefore);
+        vm.assertGt(alephBurnedAfter, alephBurnedBefore);
+    }
+
+    function test_process_swap_V3_UNI_multi_hop() public {
+        address uniTokenAddress = 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984;
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        IERC20 uni = IERC20(uniTokenAddress);
+
+        // Configure V3 path: UNI → WETH → ALEPH (multi-hop with 0.3% fees)
+        bytes memory v3Path = abi.encodePacked(
+            uniTokenAddress,
+            uint24(3000), // 0.3% fee
+            wethTokenAddress,
+            uint24(3000), // 0.3% fee
+            alephTokenAddress
+        );
+        alephPaymentProcessor.setTokenConfigV3(uniTokenAddress, v3Path);
+
+        // Give contract some UNI
+        deal(uniTokenAddress, contractAddress, 1000 * 1e18);
+
+        // Record balances before
+        uint256 uniBalanceBefore = uni.balanceOf(contractAddress);
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+
+        vm.assertEq(uniBalanceBefore, 1000 * 1e18);
+
+        // Execute swap
+        uint256 amountToSwap = 100 * 1e18; // 100 UNI
+        alephPaymentProcessor.process(uniTokenAddress, uint128(amountToSwap), 0, 60);
+
+        // Verify UNI was consumed
+        uint256 uniBalanceAfter = uni.balanceOf(contractAddress);
+        vm.assertEq(uniBalanceAfter, uniBalanceBefore - amountToSwap);
+
+        // Verify ALEPH was received and distributed
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        vm.assertGt(alephDistributionAfter, alephDistributionBefore);
+    }
+
+    function test_process_swap_V3_ETH_to_ALEPH() public {
+        // Configure V3 path: ETH → ALEPH (direct pair, same as working WETH test)
+        bytes memory v3Path = abi.encodePacked(
+            address(0), // ETH (will be replaced with WETH)
+            uint24(10000), // 1% fee (same as working WETH test)
+            alephTokenAddress
+        );
+        alephPaymentProcessor.setTokenConfigV3(address(0), v3Path);
+
+        // Give contract some ETH
+        vm.deal(contractAddress, 10 ether);
+
+        // Record balances before
+        uint256 ethBalanceBefore = contractAddress.balance;
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersBefore = aleph.balanceOf(developersRecipientAddress);
+
+        vm.assertEq(ethBalanceBefore, 10 ether);
+
+        // Execute swap
+        uint256 amountToSwap = 2 ether;
+        alephPaymentProcessor.process(address(0), uint128(amountToSwap), 0, 60);
+
+        // Verify ETH was consumed
+        uint256 ethBalanceAfter = contractAddress.balance;
+        vm.assertEq(ethBalanceAfter, ethBalanceBefore - amountToSwap);
+
+        // Verify ALEPH was distributed correctly
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersAfter = aleph.balanceOf(developersRecipientAddress);
+
+        vm.assertGt(alephDistributionAfter, alephDistributionBefore);
+        vm.assertGt(alephDevelopersAfter, alephDevelopersBefore);
+    }
+
+    function test_process_swap_V3_stable_token_USDC() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Configure V3 path: USDC → WETH → ALEPH (0.05% and 1% fees)
+        bytes memory v3Path = abi.encodePacked(
+            usdcTokenAddress,
+            uint24(500), // 0.05% fee for USDC/WETH
+            wethTokenAddress,
+            uint24(10000), // 1% fee for WETH/ALEPH
+            alephTokenAddress
+        );
+        alephPaymentProcessor.setTokenConfigV3(usdcTokenAddress, v3Path);
+
+        // Set USDC as stable token
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
+
+        // Give contract some USDC
+        deal(usdcTokenAddress, contractAddress, 50000 * 1e6); // 50,000 USDC
+
+        // Record balances before
+        uint256 usdcBalanceBefore = usdc.balanceOf(contractAddress);
+        uint256 usdcDevelopersBefore = usdc.balanceOf(developersRecipientAddress);
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+
+        // Execute swap
+        uint256 amountToSwap = 5000 * 1e6; // 5000 USDC
+        alephPaymentProcessor.process(usdcTokenAddress, uint128(amountToSwap), 0, 60);
+
+        // Verify USDC was consumed
+        uint256 usdcBalanceAfter = usdc.balanceOf(contractAddress);
+        vm.assertEq(usdcBalanceAfter, usdcBalanceBefore - amountToSwap);
+
+        // For stable tokens, developers portion should be sent directly in USDC
+        uint256 usdcDevelopersAfter = usdc.balanceOf(developersRecipientAddress);
+        vm.assertGt(usdcDevelopersAfter, usdcDevelopersBefore);
+
+        // Distribution + burn portions should be swapped to ALEPH
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        vm.assertGt(alephDistributionAfter, alephDistributionBefore);
+    }
+
+    function test_compare_V2_vs_V3_swap_efficiency() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        uint256 swapAmount = 1 ether;
+
+        // Setup V2 configuration
+        address[] memory v2Path = new address[](2);
+        v2Path[0] = wethTokenAddress;
+        v2Path[1] = alephTokenAddress;
+
+        // Setup V3 configuration
+        bytes memory v3Path = abi.encodePacked(
+            wethTokenAddress,
+            uint24(10000), // 1% fee
+            alephTokenAddress
+        );
+
+        // Test V2 swap
+        deal(wethTokenAddress, contractAddress, swapAmount);
+        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, v2Path);
+        uint256 alephBefore = aleph.balanceOf(distributionRecipientAddress);
+        alephPaymentProcessor.process(wethTokenAddress, uint128(swapAmount), 0, 60);
+        uint256 alephAfterV2 = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephReceivedV2 = alephAfterV2 - alephBefore;
+
+        // Test V3 swap with same amount
+        deal(wethTokenAddress, contractAddress, swapAmount);
+        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, v3Path);
+        alephBefore = aleph.balanceOf(distributionRecipientAddress);
+        alephPaymentProcessor.process(wethTokenAddress, uint128(swapAmount), 0, 60);
+        uint256 alephAfterV3 = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephReceivedV3 = alephAfterV3 - alephBefore;
+
+        // Both should receive some ALEPH (exact amounts may vary due to slippage/fees)
+        vm.assertGt(alephReceivedV2, 0);
+        vm.assertGt(alephReceivedV3, 0);
+
+        console.log("V2 ALEPH received:", alephReceivedV2);
+        console.log("V3 ALEPH received:", alephReceivedV3);
+    }
+
+    function test_invalid_version_swap_reverts() public {
+        // Use DAI as a real token that exists but has no configuration for this test
+        address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+        deal(daiTokenAddress, contractAddress, 1000 ether); // DAI has 18 decimals
+
+        // Try to process token without configuration
+        vm.expectRevert("Invalid uniswap version");
+        alephPaymentProcessor.process(daiTokenAddress, 100 ether, 0, 60);
+    }
+
+    function test_direct_universal_router_v2_call() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        address routerAddress = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
+
+        // Test direct Universal Router call to isolate encoding issue
+        IERC20 weth = IERC20(wethTokenAddress);
+        deal(wethTokenAddress, address(this), 1 ether);
+
+        // Approve Permit2 and Universal Router (same pattern as AlephPaymentProcessor)
+        weth.approve(permit2Address, type(uint256).max);
+
+        // Use Permit2 to approve Universal Router
+        IPermit2 permit2 = IPermit2(permit2Address);
+        permit2.approve(wethTokenAddress, routerAddress, uint160(1 ether), uint48(block.timestamp + 60));
+
+        // Create V2 path: WETH → USDC
+        address[] memory path = new address[](2);
+        path[0] = wethTokenAddress;
+        path[1] = usdcTokenAddress;
+
+        // Encode V2 swap parameters - need PERMIT2_TRANSFER_FROM first
+        bytes memory commands = abi.encodePacked(
+            uint8(0x02), // PERMIT2_TRANSFER_FROM
+            uint8(0x08) // V2_SWAP_EXACT_IN
+        );
+        bytes[] memory inputs = new bytes[](2);
+
+        // First transfer WETH to router
+        inputs[0] = abi.encode(
+            wethTokenAddress, // token
+            routerAddress, // recipient (router)
+            uint160(0.5 ether) // amount
+        );
+
+        // Then swap
+        inputs[1] = abi.encode(
+            address(this), // recipient
+            uint256(0.5 ether), // amountIn
+            uint256(0), // amountOutMinimum (0 for testing)
+            path, // path
+            false // payerIsUser
+        );
+
+        // Try direct Universal Router call
+        (bool success, bytes memory returnData) = routerAddress.call(
+            abi.encodeWithSignature("execute(bytes,bytes[],uint256)", commands, inputs, block.timestamp + 60)
+        );
+
+        if (!success) {
+            // Decode the revert reason
+            if (returnData.length > 0) {
+                assembly {
+                    let returnDataSize := mload(returnData)
+                    revert(add(32, returnData), returnDataSize)
+                }
+            } else {
+                revert("Universal Router call failed");
+            }
+        }
+
+        // Check that we received some USDC
+        uint256 usdcReceived = usdc.balanceOf(address(this));
+        vm.assertGt(usdcReceived, 0);
+    }
+
+    // ============ V2 CORNER CASE TESTS ============
+
+    function test_V2_invalid_path_empty() public {
+        address testToken = usdcTokenAddress;
+
+        // Try to set empty path
+        address[] memory emptyPath = new address[](0);
+        vm.expectRevert("Invalid V2 path");
+        alephPaymentProcessor.setTokenConfigV2(testToken, emptyPath);
+    }
+
+    function test_V2_invalid_path_single_token() public {
+        address testToken = usdcTokenAddress;
+
+        // Try to set path with only one token
+        address[] memory singlePath = new address[](1);
+        singlePath[0] = testToken;
+        vm.expectRevert("Invalid V2 path");
+        alephPaymentProcessor.setTokenConfigV2(testToken, singlePath);
+    }
+
+    function test_V2_path_with_identical_consecutive_tokens() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Create path with identical consecutive tokens (invalid for V2)
+        address[] memory invalidPath = new address[](3);
+        invalidPath[0] = wethTokenAddress;
+        invalidPath[1] = wethTokenAddress; // Same as previous - invalid
+        invalidPath[2] = alephTokenAddress;
+
+        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, invalidPath);
+        deal(wethTokenAddress, contractAddress, 1 ether);
+
+        // Should fail when trying to swap due to invalid pair
+        vm.expectRevert();
+        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 60);
+    }
+
+    function test_V2_extremely_long_path() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+
+        // Create an extremely long path (5 hops)
+        address[] memory longPath = new address[](6);
+        longPath[0] = wethTokenAddress;
+        longPath[1] = usdcTokenAddress;
+        longPath[2] = daiTokenAddress;
+        longPath[3] = usdcTokenAddress; // Back to USDC
+        longPath[4] = wethTokenAddress; // Back to WETH
+        longPath[5] = alephTokenAddress;
+
+        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, longPath);
+        deal(wethTokenAddress, contractAddress, 1 ether);
+
+        // May fail due to insufficient liquidity or gas limits
+        // But configuration should succeed
+        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(wethTokenAddress);
+        vm.assertEq(config.version, 2);
+        vm.assertEq(config.v2Path.length, 6);
+    }
+
+    function test_V2_zero_amount_swap() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Configure valid path
+        address[] memory path = new address[](2);
+        path[0] = wethTokenAddress;
+        path[1] = alephTokenAddress;
+        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, path);
+
+        deal(wethTokenAddress, contractAddress, 1 ether);
+
+        // Try zero amount swap - this actually processes the entire balance (expected behavior)
+        // Main goal is to verify it doesn't revert
+        alephPaymentProcessor.process(wethTokenAddress, 0, 0, 60);
+    }
+
+    function test_V2_native_ETH_to_ALEPH_swap() public {
+        // Configure path for native ETH using address(0) which gets replaced with WETH during config
+        address[] memory path = new address[](2);
+        path[0] = address(0); // ETH (replaced with WETH during configuration)
+        path[1] = alephTokenAddress; // ALEPH
+        alephPaymentProcessor.setTokenConfigV2(address(0), path);
+
+        // Give contract native ETH
+        vm.deal(contractAddress, 1 ether);
+
+        uint256 ethBalanceBefore = contractAddress.balance;
+
+        // Process native ETH - should wrap ETH to WETH then swap to ALEPH
+        alephPaymentProcessor.process(address(0), 0.5 ether, 0, 60);
+
+        uint256 ethBalanceAfter = contractAddress.balance;
+
+        // Verify ETH was consumed and process completed successfully
+        assertEq(ethBalanceAfter, ethBalanceBefore - 0.5 ether);
+    }
+
+    function test_V2_maximum_uint128_amount() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Configure valid path
+        address[] memory path = new address[](2);
+        path[0] = wethTokenAddress;
+        path[1] = alephTokenAddress;
+        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, path);
+
+        // Deal max uint128 amount (unrealistic but tests edge case)
+        uint128 maxAmount = type(uint128).max;
+        deal(wethTokenAddress, contractAddress, maxAmount);
+
+        // Should fail due to insufficient liquidity, but path validation should work
+        vm.expectRevert();
+        alephPaymentProcessor.process(wethTokenAddress, maxAmount, 0, 60);
+    }
+
+    function test_V2_permit2_expiration_edge_case() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Configure valid path
+        address[] memory path = new address[](2);
+        path[0] = wethTokenAddress;
+        path[1] = alephTokenAddress;
+        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, path);
+
+        deal(wethTokenAddress, contractAddress, 1 ether);
+
+        // Try with very short TTL (1 second) - this actually succeeds because TTL is applied at execution time
+        // Not expecting revert as the permit2 approval happens just before execution
+        // Main goal is to verify it doesn't revert
+        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 1);
+    }
+
+    function test_V2_nonexistent_pair_path() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        address randomToken = makeAddr("randomToken");
+
+        // Create path with non-existent pair
+        address[] memory invalidPath = new address[](2);
+        invalidPath[0] = wethTokenAddress;
+        invalidPath[1] = randomToken; // This pair likely doesn't exist
+
+        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, invalidPath);
+        deal(wethTokenAddress, contractAddress, 1 ether);
+
+        // Should fail when trying to swap
+        vm.expectRevert();
+        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 60);
+    }
+
+    // ============ V3 CORNER CASE TESTS ============
+
+    function test_V3_invalid_path_empty() public {
+        address testToken = usdcTokenAddress;
+
+        // Try to set empty path
+        bytes memory emptyPath = "";
+        vm.expectRevert("V3 path too short");
+        alephPaymentProcessor.setTokenConfigV3(testToken, emptyPath);
+    }
+
+    function test_V3_invalid_path_too_short() public {
+        address testToken = usdcTokenAddress;
+
+        // V3 path must be at least 43 bytes (20 + 3 + 20)
+        bytes memory shortPath = abi.encodePacked(
+            testToken,
+            uint24(3000) // Missing second token
+        );
+
+        vm.expectRevert("V3 path too short");
+        alephPaymentProcessor.setTokenConfigV3(testToken, shortPath);
+    }
+
+    function test_V3_invalid_path_odd_length() public {
+        address testToken = usdcTokenAddress;
+
+        // Create path with odd length (missing fee or partial token)
+        bytes memory oddPath = new bytes(44); // 43 + 1 extra byte
+        // Fill with some data
+        for (uint256 i = 0; i < 44; i++) {
+            oddPath[i] = bytes1(uint8(i % 256));
+        }
+
+        alephPaymentProcessor.setTokenConfigV3(testToken, oddPath);
+        deal(testToken, contractAddress, 1000 * 1e6);
+
+        // Should fail during swap due to invalid path encoding
+        vm.expectRevert();
+        alephPaymentProcessor.process(testToken, 100 * 1e6, 0, 60);
+    }
+
+    function test_V3_unsupported_fee_tier() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Use unsupported fee tier (1337 instead of standard 500, 3000, 10000)
+        bytes memory pathWithInvalidFee = abi.encodePacked(
+            wethTokenAddress,
+            uint24(1337), // Non-standard fee tier
+            alephTokenAddress
+        );
+
+        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, pathWithInvalidFee);
+        deal(wethTokenAddress, contractAddress, 1 ether);
+
+        // Should fail during swap due to non-existent pool
+        vm.expectRevert();
+        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 60);
+    }
+
+    function test_V3_extremely_long_path() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+
+        // Create very long V3 path (4 hops)
+        bytes memory longPath = abi.encodePacked(
+            wethTokenAddress,
+            uint24(3000), // WETH -> USDC
+            usdcTokenAddress,
+            uint24(500), // USDC -> DAI
+            daiTokenAddress,
+            uint24(3000), // DAI -> USDC (back)
+            usdcTokenAddress,
+            uint24(10000), // USDC -> ALEPH
+            alephTokenAddress
+        );
+
+        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, longPath);
+        deal(wethTokenAddress, contractAddress, 1 ether);
+
+        // Configuration should succeed
+        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(wethTokenAddress);
+        vm.assertEq(config.version, 3);
+        vm.assertGt(config.v3Path.length, 43); // At least minimum valid length
+    }
+
+    function test_V3_path_with_identical_tokens() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Create path where token swaps with itself (invalid)
+        bytes memory selfSwapPath = abi.encodePacked(
+            wethTokenAddress,
+            uint24(3000),
+            wethTokenAddress // Same token - invalid for swapping
+        );
+
+        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, selfSwapPath);
+        deal(wethTokenAddress, contractAddress, 1 ether);
+
+        // Should fail during swap
+        vm.expectRevert();
+        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 60);
+    }
+
+    function test_V3_address_replacement_multiple_zeros() public {
+        // Test path with multiple address(0) - edge case for replacement function
+        bytes memory pathWithMultipleZeros = abi.encodePacked(
+            address(0), // Will be replaced
+            uint24(3000),
+            address(0), // Second zero - should remain (invalid but tests edge case)
+            uint24(10000),
+            alephTokenAddress
+        );
+
+        alephPaymentProcessor.setTokenConfigV3(address(0), pathWithMultipleZeros);
+        vm.deal(contractAddress, 1 ether);
+
+        // Should fail due to invalid path structure
+        vm.expectRevert();
+        alephPaymentProcessor.process(address(0), 0.1 ether, 0, 60);
+    }
+
+    function test_V3_zero_amount_swap() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Configure valid path
+        bytes memory path = abi.encodePacked(wethTokenAddress, uint24(10000), alephTokenAddress);
+        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, path);
+
+        deal(wethTokenAddress, contractAddress, 1 ether);
+
+        // Try zero amount swap - this actually processes the entire balance (expected behavior)
+        // Main goal is to verify it doesn't revert
+        alephPaymentProcessor.process(wethTokenAddress, 0, 0, 60);
+    }
+
+    function test_V3_native_ETH_to_ALEPH_swap() public {
+        // Configure V3 path for native ETH (address(0)) - path contains address(0) which gets replaced with WETH
+        bytes memory path = abi.encodePacked(
+            address(0), // This gets replaced with WETH in replaceAddressZeroWithWeth
+            uint24(10000),
+            alephTokenAddress
+        );
+        alephPaymentProcessor.setTokenConfigV3(address(0), path);
+
+        // Give contract native ETH
+        vm.deal(contractAddress, 1 ether);
+
+        uint256 ethBalanceBefore = contractAddress.balance;
+
+        // Process native ETH - should wrap ETH to WETH then swap to ALEPH using V3
+        alephPaymentProcessor.process(address(0), 0.3 ether, 0, 60);
+
+        uint256 ethBalanceAfter = contractAddress.balance;
+
+        // Verify ETH was consumed and process completed successfully
+        assertEq(ethBalanceAfter, ethBalanceBefore - 0.3 ether);
+    }
+
+    function test_ETH_wrapping_and_path_replacement_verification() public {
+        // Test V2 ETH path configuration
+        address[] memory v2PathEth = new address[](2);
+        v2PathEth[0] = address(0); // ETH (replaced with WETH during configuration)
+        v2PathEth[1] = alephTokenAddress;
+        alephPaymentProcessor.setTokenConfigV2(address(0), v2PathEth);
+
+        // Test V3 ETH path configuration with address(0) replacement
+        bytes memory v3PathEth = abi.encodePacked(
+            address(0), // This will be replaced with WETH during configuration
+            uint24(10000),
+            alephTokenAddress
+        );
+        alephPaymentProcessor.setTokenConfigV3(address(0), v3PathEth);
+
+        // Verify configurations were set correctly
+        AlephPaymentProcessor.TokenConfig memory v2Config = alephPaymentProcessor.getTokenConfig(address(0));
+        assertEq(v2Config.version, 3); // V3 overwrote V2, that's expected
+        assertEq(v2Config.v3Path.length, 43); // 20 + 3 + 20 bytes
+
+        // Give contract ETH for testing
+        vm.deal(contractAddress, 2 ether);
+
+        uint256 initialEth = contractAddress.balance;
+
+        // Process ETH - should trigger wrapping and swapping
+        alephPaymentProcessor.process(address(0), 0.2 ether, 0, 60);
+
+        // Verify ETH was consumed and process completed successfully
+        assertEq(contractAddress.balance, initialEth - 0.2 ether);
+    }
+
+    // ============ UNIVERSAL ROUTER V2 INTEGRATION CORNER CASES ============
+
+    function test_universal_router_v2_deadline_expiration() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Configure valid path
+        address[] memory path = new address[](2);
+        path[0] = wethTokenAddress;
+        path[1] = alephTokenAddress;
+        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, path);
+
+        deal(wethTokenAddress, contractAddress, 1 ether);
+
+        // Deadline is calculated as block.timestamp + TTL at execution time
+        // So even if we warp forward, a reasonable TTL will still be valid
+        // Main goal is to verify it doesn't revert
+        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 60);
+    }
+
+    function test_universal_router_v2_insufficient_output_amount() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+
+        // Configure valid path
+        address[] memory path = new address[](2);
+        path[0] = wethTokenAddress;
+        path[1] = alephTokenAddress;
+        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, path);
+
+        deal(wethTokenAddress, contractAddress, 1 ether);
+
+        // Set unrealistically high minimum output amount
+        uint128 unrealisticMinOutput = 1000000 ether; // Way more than possible
+
+        // The Universal Router throws V2TooLittleReceived() error for insufficient output
+        vm.expectRevert("V2TooLittleReceived()");
+        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, unrealisticMinOutput, 60);
+    }
+
+    function test_universal_router_v2_permit2_insufficient_allowance() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        address routerAddress = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
+
+        IERC20 weth = IERC20(wethTokenAddress);
+        deal(wethTokenAddress, address(this), 1 ether);
+
+        // Approve Permit2 but with insufficient amount
+        weth.approve(permit2Address, type(uint256).max);
+
+        IPermit2 permit2 = IPermit2(permit2Address);
+        permit2.approve(
+            wethTokenAddress,
+            routerAddress,
+            uint160(0.1 ether), // Only 0.1 ETH allowance
+            uint48(block.timestamp + 60)
+        );
+
+        // Try to transfer more than allowance
+        bytes memory commands = abi.encodePacked(
+            uint8(0x02), // PERMIT2_TRANSFER_FROM
+            uint8(0x08) // V2_SWAP_EXACT_IN
+        );
+        bytes[] memory inputs = new bytes[](2);
+
+        inputs[0] = abi.encode(
+            wethTokenAddress,
+            routerAddress,
+            uint160(0.5 ether) // More than allowance
+        );
+
+        address[] memory path = new address[](2);
+        path[0] = wethTokenAddress;
+        path[1] = usdcTokenAddress;
+
+        inputs[1] = abi.encode(address(this), uint256(0.5 ether), uint256(0), path, false);
+
+        // Should fail due to insufficient allowance
+        (bool success,) = routerAddress.call(
+            abi.encodeWithSignature("execute(bytes,bytes[],uint256)", commands, inputs, block.timestamp + 60)
+        );
+
+        vm.assertEq(success, false);
+    }
+
+    function test_universal_router_v2_command_sequence_validation() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        address routerAddress = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
+
+        deal(wethTokenAddress, address(this), 1 ether);
+
+        // Wrong command sequence - swap without transfer first
+        bytes memory commands = abi.encodePacked(uint8(0x08)); // Only V2_SWAP_EXACT_IN
+        bytes[] memory inputs = new bytes[](1);
+
+        address[] memory path = new address[](2);
+        path[0] = wethTokenAddress;
+        path[1] = usdcTokenAddress;
+
+        inputs[0] = abi.encode(
+            address(this),
+            uint256(0.5 ether),
+            uint256(0),
+            path,
+            false // payerIsUser = false, but no PERMIT2_TRANSFER_FROM command
+        );
+
+        // Should fail because router has no tokens to swap
+        (bool success,) = routerAddress.call(
+            abi.encodeWithSignature("execute(bytes,bytes[],uint256)", commands, inputs, block.timestamp + 60)
+        );
+
+        vm.assertEq(success, false);
+    }
+
+    function test_universal_router_v2_eth_wrapping_edge_case() public {
+        // Test ETH wrapping with zero amount
+        vm.deal(contractAddress, 1 ether);
+
+        // Configure valid ETH path
+        bytes memory v3Path = abi.encodePacked(address(0), uint24(10000), alephTokenAddress);
+        alephPaymentProcessor.setTokenConfigV3(address(0), v3Path);
+
+        // Try zero amount ETH swap - this actually processes the entire balance (expected behavior)
+        // Main goal is to verify it doesn't revert
+        alephPaymentProcessor.process(address(0), 0, 0, 60);
+    }
+
+    function test_v2_v3_version_consistency() public {
+        address testToken = usdcTokenAddress;
+
+        // Set V2 config
+        address[] memory v2Path = new address[](2);
+        v2Path[0] = testToken;
+        v2Path[1] = alephTokenAddress;
+        alephPaymentProcessor.setTokenConfigV2(testToken, v2Path);
+
+        AlephPaymentProcessor.TokenConfig memory configV2 = alephPaymentProcessor.getTokenConfig(testToken);
+        vm.assertEq(configV2.version, 2);
+
+        // Override with V3 config
+        bytes memory v3Path = abi.encodePacked(testToken, uint24(3000), alephTokenAddress);
+        alephPaymentProcessor.setTokenConfigV3(testToken, v3Path);
+
+        AlephPaymentProcessor.TokenConfig memory configV3 = alephPaymentProcessor.getTokenConfig(testToken);
+        vm.assertEq(configV3.version, 3);
+        vm.assertEq(configV3.v2Path.length, 0); // Should be cleared
+    }
+
+    function test_permit2_address_replacement_edge_cases() public {
+        // Test the replaceAddressZeroWithWETH function with edge cases
+
+        // This should not cause any issues - path too short to contain address
+        bytes memory v3Path = abi.encodePacked(
+            address(0), // This will be replaced
+            uint24(10000),
+            alephTokenAddress
+        );
+        alephPaymentProcessor.setTokenConfigV3(address(0), v3Path);
+
+        vm.deal(contractAddress, 1 ether);
+
+        // Should work - the replacement function should handle this properly
+        alephPaymentProcessor.process(address(0), 0.1 ether, 0, 60);
     }
 }

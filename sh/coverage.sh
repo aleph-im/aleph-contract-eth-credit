@@ -11,7 +11,7 @@ forge coverage  \
     --report lcov \
     --report summary \
     --no-match-coverage "(script|lib)" \
-    --ir-minimum # https://github.com/foundry-rs/foundry/issues/3357
+    --ir-minimum
 
 # If that fails, try with via-ir
 if [ $? -ne 0 ]; then
@@ -26,5 +26,5 @@ fi
 
 echo "Coverage analysis complete."
 
-genhtml lcov.info --branch-coverage --output-dir coverage --ignore-errors inconsistent || true
-echo "Coverage html report generated"
+# genhtml lcov.info --branch-coverage --output-dir coverage --ignore-errors inconsistent || true
+# echo "Coverage html report generated"
