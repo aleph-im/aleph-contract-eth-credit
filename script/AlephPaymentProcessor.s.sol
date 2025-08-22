@@ -53,7 +53,7 @@ contract AlephPaymentProcessorScript is Script {
             hooks: IHooks(address(0)),
             hookData: bytes("")
         });
-        alephPaymentProcessor.setTokenConfigV4(ethTokenAddress, ethPath);
+        alephPaymentProcessor.setSwapConfigV4(ethTokenAddress, ethPath);
 
         // Init ALEPH/USDC PoolKey for uniswap v4 (0x8ee28047ee72104999ce30d35f92e1757a7a94a5ac2bc200f4c2da1eabfe6429)
         address usdcTokenAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
@@ -65,7 +65,7 @@ contract AlephPaymentProcessorScript is Script {
             hooks: IHooks(address(0)),
             hookData: bytes("")
         });
-        alephPaymentProcessor.setTokenConfigV4(usdcTokenAddress, usdcPath);
+        alephPaymentProcessor.setSwapConfigV4(usdcTokenAddress, usdcPath);
 
         // Set USDC as stable token
         alephPaymentProcessor.setStableToken(usdcTokenAddress, true);

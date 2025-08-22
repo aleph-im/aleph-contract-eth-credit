@@ -4,10 +4,10 @@ This document provides examples of how to configure tokens for different Uniswap
 
 ## Overview
 
-The `TokenConfig` struct supports all three Uniswap versions with automatic address replacement and validation:
+The `SwapConfig` struct supports all three Uniswap versions with automatic address replacement and validation:
 
 ```solidity
-struct TokenConfig {
+struct SwapConfig {
     uint8 version;        // 2, 3, or 4
     address token;        // Token address (use address(0) for native ETH)
     PathKey[] v4Path;     // For Uniswap V4 pools
@@ -40,7 +40,7 @@ address[] memory ethPath = new address[](2);
 ethPath[0] = address(0);        // ETH (auto-replaced with WETH)
 ethPath[1] = alephTokenAddress; // ALEPH
 
-alephPaymentProcessor.setTokenConfigV2(address(0), ethPath);
+alephPaymentProcessor.setSwapConfigV2(address(0), ethPath);
 
 // Usage: Process native ETH
 alephPaymentProcessor.process(address(0), 1 ether, 0, 300);
@@ -56,7 +56,7 @@ address[] memory v2Path = new address[](2);
 v2Path[0] = wethTokenAddress;   // WETH
 v2Path[1] = alephTokenAddress;  // ALEPH
 
-alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, v2Path);
+alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, v2Path);
 ```
 
 ### Example 3: Multi-hop (USDC → WETH → ALEPH)
@@ -71,7 +71,7 @@ v2Path[0] = usdcTokenAddress;   // USDC
 v2Path[1] = wethTokenAddress;   // WETH (intermediate)
 v2Path[2] = alephTokenAddress;  // ALEPH
 
-alephPaymentProcessor.setTokenConfigV2(usdcTokenAddress, v2Path);
+alephPaymentProcessor.setSwapConfigV2(usdcTokenAddress, v2Path);
 ```
 
 ## Uniswap V3 Configuration
@@ -90,7 +90,7 @@ bytes memory ethV3Path = abi.encodePacked(
     alephTokenAddress
 );
 
-alephPaymentProcessor.setTokenConfigV3(address(0), ethV3Path);
+alephPaymentProcessor.setSwapConfigV3(address(0), ethV3Path);
 
 // Usage: Process native ETH
 alephPaymentProcessor.process(address(0), 0.5 ether, 0, 300);
@@ -108,7 +108,7 @@ bytes memory v3Path = abi.encodePacked(
     alephTokenAddress          // ALEPH
 );
 
-alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, v3Path);
+alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, v3Path);
 ```
 
 ### Example 3: Multi-hop (UNI → WETH → ALEPH, 0.3% fees)
@@ -126,7 +126,7 @@ bytes memory v3Path = abi.encodePacked(
     alephTokenAddress         // ALEPH
 );
 
-alephPaymentProcessor.setTokenConfigV3(uniTokenAddress, v3Path);
+alephPaymentProcessor.setSwapConfigV3(uniTokenAddress, v3Path);
 ```
 
 ### V3 Fee Tiers
@@ -159,7 +159,7 @@ ethV4Path[0] = PathKey({
     hookData: bytes("")            // No hook data
 });
 
-alephPaymentProcessor.setTokenConfigV4(address(0), ethV4Path);
+alephPaymentProcessor.setSwapConfigV4(address(0), ethV4Path);
 
 // Usage: Process native ETH
 alephPaymentProcessor.process(address(0), 0.1 ether, 0, 300);
@@ -180,7 +180,7 @@ v4Path[0] = PathKey({
     hookData: bytes("")            // No hook data  
 });
 
-alephPaymentProcessor.setTokenConfigV4(usdcTokenAddress, v4Path);
+alephPaymentProcessor.setSwapConfigV4(usdcTokenAddress, v4Path);
 ```
 
 ### Example 3: Multi-hop with Intermediate Currency (V4)
@@ -211,7 +211,7 @@ v4Path[1] = PathKey({
     hookData: bytes("")            // No hook data
 });
 
-alephPaymentProcessor.setTokenConfigV4(uniTokenAddress, v4Path);
+alephPaymentProcessor.setSwapConfigV4(uniTokenAddress, v4Path);
 ```
 
 ### V4 Fee Tiers and Tick Spacing
@@ -255,7 +255,7 @@ alephPaymentProcessor.process(address(0), 1 ether, minOutput, ttl);
 ### Check Current Configuration
 
 ```solidity
-TokenConfig memory config = alephPaymentProcessor.getTokenConfig(tokenAddress);
+SwapConfig memory config = alephPaymentProcessor.getSwapConfig(tokenAddress);
 
 if (config.version == 2) {
     // V2 configuration
@@ -275,19 +275,19 @@ Configurations can be updated by calling the appropriate setter function. The ne
 
 ```solidity
 // Start with V2
-alephPaymentProcessor.setTokenConfigV2(tokenAddress, v2Path);
+alephPaymentProcessor.setSwapConfigV2(tokenAddress, v2Path);
 
 // Update to V3 (overwrites V2 config)
-alephPaymentProcessor.setTokenConfigV3(tokenAddress, v3Path);
+alephPaymentProcessor.setSwapConfigV3(tokenAddress, v3Path);
 
 // Update to V4 (overwrites V3 config)  
-alephPaymentProcessor.setTokenConfigV4(tokenAddress, v4Path);
+alephPaymentProcessor.setSwapConfigV4(tokenAddress, v4Path);
 ```
 
 ### Remove Configuration
 
 ```solidity
-alephPaymentProcessor.removeTokenConfig(tokenAddress);
+alephPaymentProcessor.removeSwapConfig(tokenAddress);
 ```
 
 ## Access Control
@@ -302,11 +302,11 @@ modifier onlyOwner() {
 
 ## Usage in Processing
 
-The contract automatically routes swaps to the appropriate Uniswap version based on the token configuration:
+The contract automatically routes swaps to the appropriate Uniswap version based on the swap configuration:
 
 ```solidity
 function process(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl) external {
-    TokenConfig memory config = tokenConfig[_token];
+    SwapConfig memory config = swapConfig[_token];
     
     if (config.version == 2) {
         swapV2(_token, _amountIn, _amountOutMinimum, _ttl);
@@ -376,9 +376,9 @@ require(_v4Path.length > 0, "Empty V4 path");
 
 ## 🔗 Related Functions
 
-- `setTokenConfigV2(address, address[])` - Configure V2 paths
-- `setTokenConfigV3(address, bytes)` - Configure V3 paths  
-- `setTokenConfigV4(address, PathKey[])` - Configure V4 paths
-- `getTokenConfig(address)` - View current configuration
-- `removeTokenConfig(address)` - Remove configuration
+- `setSwapConfigV2(address, address[])` - Configure V2 paths
+- `setSwapConfigV3(address, bytes)` - Configure V3 paths  
+- `setSwapConfigV4(address, PathKey[])` - Configure V4 paths
+- `getSwapConfig(address)` - View current configuration
+- `removeSwapConfig(address)` - Remove configuration
 - `process(address, uint128, uint128, uint48)` - Execute swap and distribute

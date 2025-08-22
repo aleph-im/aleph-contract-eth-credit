@@ -25,12 +25,12 @@ import {PathKey} from "@uniswap/v4-periphery/src/libraries/PathKey.sol";
 contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, AccessControlUpgradeable {
     using SafeERC20 for IERC20;
 
-    struct TokenConfig {
+    struct SwapConfig {
         uint8 version; // 2, 3, 4 - pack with address
         address token;
-        PathKey[] v4Path; // for v4
-        bytes v3Path; // for v3 encoded path
         address[] v2Path; // for v2 address array path
+        bytes v3Path; // for v3 encoded path
+        PathKey[] v4Path; // for v4
     }
 
     event TokenPaymentsProcessed(
@@ -43,8 +43,8 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
     );
 
     // Events for parameter updates
-    event TokenConfigUpdated(address indexed token, uint8 version);
-    event TokenConfigRemoved(address indexed token, uint8 version);
+    event SwapConfigUpdated(address indexed token, uint8 version);
+    event SwapConfigRemoved(address indexed token, uint8 version);
     event DistributionRecipientUpdated(address indexed recipient);
     event DevelopersRecipientUpdated(address indexed recipient);
     event BurnPercentageUpdated(uint8 percentage);
@@ -70,8 +70,8 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
     UniversalRouter internal router;
     IPermit2 internal permit2;
 
-    // Token configuration for swapping in uniswap
-    mapping(address => TokenConfig) internal tokenConfig;
+    // Swap configuration for swapping in uniswap
+    mapping(address => SwapConfig) internal swapConfig;
 
     /**
      * @dev Initializes the contract with required parameters
@@ -198,7 +198,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      */
     function withdraw(address _token, address payable _to, uint128 _amount) external onlyRole(adminRole) {
         require(
-            _token != address(aleph) && tokenConfig[_token].version == 0,
+            _token != address(aleph) && swapConfig[_token].version == 0,
             "Cannot withdraw a token configured for automatic distribution"
         );
 
@@ -351,12 +351,12 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
     }
 
     /**
-     * @dev Returns the token configuration for swapping
+     * @dev Returns the swap configuration for a token
      * @param _address Token address to query
-     * @return TokenConfig struct with swap configuration
+     * @return SwapConfig struct with swap configuration
      */
-    function getTokenConfig(address _address) external view returns (TokenConfig memory) {
-        return tokenConfig[_address];
+    function getSwapConfig(address _address) external view returns (SwapConfig memory) {
+        return swapConfig[_address];
     }
 
     /**
@@ -364,16 +364,16 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      * @param _address Token address to configure
      * @param _v2Path Array of addresses defining the swap path
      */
-    function setTokenConfigV2(address _address, address[] calldata _v2Path) external onlyOwner {
+    function setSwapConfigV2(address _address, address[] calldata _v2Path) external onlyOwner {
         require(_v2Path.length >= 2, "Invalid V2 path");
 
         // Replace address(0) with WETH in the path during configuration
         address[] memory processedPath = replaceAddressZeroWithWethV2(_v2Path);
 
-        tokenConfig[_address] =
-            TokenConfig({version: 2, token: _address, v4Path: new PathKey[](0), v3Path: "", v2Path: processedPath});
+        swapConfig[_address] =
+            SwapConfig({version: 2, token: _address, v4Path: new PathKey[](0), v3Path: "", v2Path: processedPath});
 
-        emit TokenConfigUpdated(_address, 2);
+        emit SwapConfigUpdated(_address, 2);
     }
 
     /**
@@ -381,13 +381,13 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      * @param _address Token address to configure
      * @param _v3Path Encoded path with fee tiers for V3 swapping
      */
-    function setTokenConfigV3(address _address, bytes calldata _v3Path) external onlyOwner {
+    function setSwapConfigV3(address _address, bytes calldata _v3Path) external onlyOwner {
         require(_v3Path.length >= 43, "V3 path too short");
 
         // Replace address(0) with WETH in the path during configuration
         bytes memory processedPath = replaceAddressZeroWithWeth(_v3Path);
 
-        tokenConfig[_address] = TokenConfig({
+        swapConfig[_address] = SwapConfig({
             version: 3,
             token: _address,
             v4Path: new PathKey[](0),
@@ -395,7 +395,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
             v2Path: new address[](0)
         });
 
-        emit TokenConfigUpdated(_address, 3);
+        emit SwapConfigUpdated(_address, 3);
     }
 
     /**
@@ -403,25 +403,25 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
      * @param _address Token address to configure
      * @param _v4Path Array of PathKey structs defining the V4 swap path
      */
-    function setTokenConfigV4(address _address, PathKey[] calldata _v4Path) external onlyOwner {
+    function setSwapConfigV4(address _address, PathKey[] calldata _v4Path) external onlyOwner {
         require(_v4Path.length > 0, "Empty V4 path");
 
-        tokenConfig[_address] =
-            TokenConfig({version: 4, token: _address, v4Path: _v4Path, v3Path: "", v2Path: new address[](0)});
+        swapConfig[_address] =
+            SwapConfig({version: 4, token: _address, v4Path: _v4Path, v3Path: "", v2Path: new address[](0)});
 
-        emit TokenConfigUpdated(_address, 4);
+        emit SwapConfigUpdated(_address, 4);
     }
 
     /**
-     * @dev Removes token configuration to disable automatic processing
+     * @dev Removes swap configuration to disable automatic processing
      * @param _address Token address to remove configuration for
      */
-    function removeTokenConfig(address _address) external onlyOwner {
-        TokenConfig memory config = tokenConfig[_address];
-        require(config.version > 0, "Invalid token config");
+    function removeSwapConfig(address _address) external onlyOwner {
+        SwapConfig memory config = swapConfig[_address];
+        require(config.version > 0, "Invalid swap config");
 
-        delete tokenConfig[_address];
-        emit TokenConfigRemoved(_address, config.version);
+        delete swapConfig[_address];
+        emit SwapConfigRemoved(_address, config.version);
     }
 
     /**
@@ -509,7 +509,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         internal
         returns (uint256 amountOut)
     {
-        TokenConfig memory config = tokenConfig[_token];
+        SwapConfig memory config = swapConfig[_token];
         require(config.version >= 2 && config.version <= 4, "Invalid uniswap version");
 
         if (config.version == 2) {
@@ -533,7 +533,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         internal
         returns (uint256 amountOut)
     {
-        TokenConfig memory config = tokenConfig[_token];
+        SwapConfig memory config = swapConfig[_token];
         require(config.version == 2, "Invalid uniswap version");
         require(config.v2Path.length >= 2, "Invalid V2 path");
 
@@ -616,7 +616,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         internal
         returns (uint256 amountOut)
     {
-        TokenConfig memory config = tokenConfig[_token];
+        SwapConfig memory config = swapConfig[_token];
         require(config.version == 3, "Invalid uniswap version");
         require(config.v3Path.length >= 43, "V3 path too short");
 
@@ -699,7 +699,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         internal
         returns (uint256 amountOut)
     {
-        TokenConfig memory config = tokenConfig[_token];
+        SwapConfig memory config = swapConfig[_token];
         require(config.version == 4, "Invalid uniswap version");
 
         Currency currencyIn = Currency.wrap(_token);

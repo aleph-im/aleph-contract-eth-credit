@@ -41,7 +41,7 @@ The AlephPaymentProcessor is an upgradeable smart contract that:
 ## Contract Architecture
 
 ```solidity
-struct TokenConfig {
+struct SwapConfig {
     uint8 version;        // 2, 3, or 4 (Uniswap version)
     address token;        // Token address
     PathKey[] v4Path;     // V4 swap path
@@ -165,10 +165,10 @@ $ cast <subcommand>
 - `withdraw(token, to, amount)` - Withdraw unconfigured tokens
 
 ### Configuration Management
-- `setTokenConfigV2(token, path)` - Configure V2 swap path
-- `setTokenConfigV3(token, path)` - Configure V3 encoded path  
-- `setTokenConfigV4(token, path)` - Configure V4 PathKey array
-- `removeTokenConfig(token)` - Remove token configuration
+- `setSwapConfigV2(token, path)` - Configure V2 swap path
+- `setSwapConfigV3(token, path)` - Configure V3 encoded path  
+- `setSwapConfigV4(token, path)` - Configure V4 PathKey array
+- `removeSwapConfig(token)` - Remove swap configuration
 
 ### Parameter Management
 - `setBurnPercentage(percentage)` - Set burn percentage (0-100)

@@ -2,7 +2,7 @@
 pragma solidity ^0.8.13;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {AlephPaymentProcessor} from "../src/AlephPaymentProcessor.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
@@ -53,7 +53,7 @@ contract AlephPaymentProcessorTest is Test {
             hooks: IHooks(address(0)),
             hookData: bytes("")
         });
-        alephPaymentProcessor.setTokenConfigV4(ethTokenAddress, ethPath);
+        alephPaymentProcessor.setSwapConfigV4(ethTokenAddress, ethPath);
 
         // Init aleph/usdc PoolKey for uniswap v4 (0x8ee28047ee72104999ce30d35f92e1757a7a94a5ac2bc200f4c2da1eabfe6429)
         PathKey[] memory usdcPath = new PathKey[](1);
@@ -64,7 +64,9 @@ contract AlephPaymentProcessorTest is Test {
             hooks: IHooks(address(0)),
             hookData: bytes("")
         });
-        alephPaymentProcessor.setTokenConfigV4(usdcTokenAddress, usdcPath);
+        alephPaymentProcessor.setSwapConfigV4(usdcTokenAddress, usdcPath);
+
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
     }
 
     function testFuzz_set_burn_percentage(uint8 x) public {
@@ -141,12 +143,18 @@ contract AlephPaymentProcessorTest is Test {
 
         vm.assertEq(usdc.balanceOf(contractAddress), 1_000);
         vm.assertEq(aleph.balanceOf(distributionRecipientAddress), 0);
+        vm.assertEq(aleph.balanceOf(developersRecipientAddress), 0);
+        vm.assertEq(usdc.balanceOf(developersRecipientAddress), 0);
+
         uint256 burnedBefore = aleph.balanceOf(address(0));
 
         alephPaymentProcessor.process(address(usdc), 200, 0, 60);
 
         vm.assertEq(usdc.balanceOf(contractAddress), 800);
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), 0);
+        vm.assertEq(aleph.balanceOf(developersRecipientAddress), 0);
+        vm.assertGt(usdc.balanceOf(developersRecipientAddress), 0);
+
         uint256 burnedAfter = aleph.balanceOf(address(0));
         vm.assertGt(burnedAfter, burnedBefore);
     }
@@ -220,7 +228,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(contractAddress.balance, 1_000);
         vm.assertEq(distributionRecipientAddress.balance, 0);
 
-        alephPaymentProcessor.removeTokenConfig(address(0));
+        alephPaymentProcessor.removeSwapConfig(address(0));
 
         alephPaymentProcessor.withdraw(address(0), payable(distributionRecipientAddress), 500);
 
@@ -235,7 +243,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(contractAddress.balance, 1_000);
         vm.assertEq(distributionRecipientAddress.balance, 0);
 
-        alephPaymentProcessor.removeTokenConfig(address(0));
+        alephPaymentProcessor.removeSwapConfig(address(0));
 
         alephPaymentProcessor.withdraw(address(0), payable(distributionRecipientAddress), 0);
 
@@ -250,7 +258,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(usdc.balanceOf(contractAddress), 1_000);
         vm.assertEq(usdc.balanceOf(distributionRecipientAddress), 0);
 
-        alephPaymentProcessor.removeTokenConfig(address(usdc));
+        alephPaymentProcessor.removeSwapConfig(address(usdc));
 
         alephPaymentProcessor.withdraw(address(usdc), payable(distributionRecipientAddress), 500);
 
@@ -265,7 +273,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(usdc.balanceOf(contractAddress), 1_000);
         vm.assertEq(usdc.balanceOf(distributionRecipientAddress), 0);
 
-        alephPaymentProcessor.removeTokenConfig(address(usdc));
+        alephPaymentProcessor.removeSwapConfig(address(usdc));
 
         alephPaymentProcessor.withdraw(address(usdc), payable(distributionRecipientAddress), 0);
 
@@ -296,13 +304,13 @@ contract AlephPaymentProcessorTest is Test {
     }
 
     function test_stable_token_detection() public {
-        vm.assertEq(alephPaymentProcessor.isStableToken(usdcTokenAddress), false);
-
-        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
         vm.assertEq(alephPaymentProcessor.isStableToken(usdcTokenAddress), true);
 
         alephPaymentProcessor.setStableToken(usdcTokenAddress, false);
         vm.assertEq(alephPaymentProcessor.isStableToken(usdcTokenAddress), false);
+
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
+        vm.assertEq(alephPaymentProcessor.isStableToken(usdcTokenAddress), true);
     }
 
     function test_stable_token_distribution_usdc() public {
@@ -536,15 +544,15 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(alephPaymentProcessor.hasRole(alephPaymentProcessor.adminRole(), admin), false);
     }
 
-    function test_getTokenConfig() public {
+    function test_getSwapConfig() public {
         // Test getting config for a token that doesn't exist
-        AlephPaymentProcessor.TokenConfig memory config =
-            alephPaymentProcessor.getTokenConfig(makeAddr("nonExistentToken"));
+        AlephPaymentProcessor.SwapConfig memory config =
+            alephPaymentProcessor.getSwapConfig(makeAddr("nonExistentToken"));
         vm.assertEq(config.version, 0);
         vm.assertEq(config.token, address(0));
 
         // Test getting config for ETH (which was set in setUp)
-        AlephPaymentProcessor.TokenConfig memory ethConfig = alephPaymentProcessor.getTokenConfig(ethTokenAddress);
+        AlephPaymentProcessor.SwapConfig memory ethConfig = alephPaymentProcessor.getSwapConfig(ethTokenAddress);
         vm.assertEq(ethConfig.version, 4);
         vm.assertEq(ethConfig.token, ethTokenAddress);
     }
@@ -567,37 +575,37 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.removeAdmin(admin);
     }
 
-    function test_access_control_setTokenConfigV4() public {
+    function test_access_control_setSwapConfigV4() public {
         address notOwner = makeAddr("notOwner");
         PathKey[] memory path = new PathKey[](0);
 
         vm.prank(notOwner);
         vm.expectRevert();
-        alephPaymentProcessor.setTokenConfigV4(makeAddr("token"), path);
+        alephPaymentProcessor.setSwapConfigV4(makeAddr("token"), path);
     }
 
-    function test_access_control_removeTokenConfig() public {
+    function test_access_control_removeSwapConfig() public {
         address notOwner = makeAddr("notOwner");
 
         vm.prank(notOwner);
         vm.expectRevert();
-        alephPaymentProcessor.removeTokenConfig(ethTokenAddress);
+        alephPaymentProcessor.removeSwapConfig(ethTokenAddress);
     }
 
-    function test_removeTokenConfig_success() public {
+    function test_removeSwapConfig_success() public {
         // Remove ETH token config
-        alephPaymentProcessor.removeTokenConfig(ethTokenAddress);
+        alephPaymentProcessor.removeSwapConfig(ethTokenAddress);
 
         // Verify it's removed
-        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(ethTokenAddress);
+        AlephPaymentProcessor.SwapConfig memory config = alephPaymentProcessor.getSwapConfig(ethTokenAddress);
         vm.assertEq(config.version, 0);
     }
 
-    function test_removeTokenConfig_invalid() public {
+    function test_removeSwapConfig_invalid() public {
         address nonExistentToken = makeAddr("nonExistent");
 
-        vm.expectRevert("Invalid token config");
-        alephPaymentProcessor.removeTokenConfig(nonExistentToken);
+        vm.expectRevert("Invalid swap config");
+        alephPaymentProcessor.removeSwapConfig(nonExistentToken);
     }
 
     function test_setBurnPercentage_boundary_values() public {
@@ -815,7 +823,7 @@ contract AlephPaymentProcessorTest is Test {
     function test_withdraw_ETH_branch() public {
         // Test the _token == address(0) branch in withdraw
         vm.deal(contractAddress, 1000);
-        alephPaymentProcessor.removeTokenConfig(address(0));
+        alephPaymentProcessor.removeSwapConfig(address(0));
 
         uint256 initialRecipientBalance = distributionRecipientAddress.balance;
 
@@ -827,7 +835,7 @@ contract AlephPaymentProcessorTest is Test {
     function test_withdraw_ERC20_branch() public {
         // Test the _token != address(0) branch in withdraw
         deal(address(usdc), contractAddress, 1000);
-        alephPaymentProcessor.removeTokenConfig(address(usdc));
+        alephPaymentProcessor.removeSwapConfig(address(usdc));
 
         uint256 initialRecipientBalance = usdc.balanceOf(distributionRecipientAddress);
 
@@ -847,7 +855,7 @@ contract AlephPaymentProcessorTest is Test {
     function test_withdraw_invalid_recipient_branch() public {
         // Test the withdraw validation branch for invalid recipient
         vm.deal(contractAddress, 1000);
-        alephPaymentProcessor.removeTokenConfig(address(0));
+        alephPaymentProcessor.removeSwapConfig(address(0));
 
         vm.expectRevert("Invalid recipient address");
         alephPaymentProcessor.withdraw(address(0), payable(address(0)), 500);
@@ -1059,7 +1067,7 @@ contract AlephPaymentProcessorTest is Test {
     function test_withdraw_invalid_recipient() public {
         // Test invalid recipient validation (line 244, BRDA:244,17,0)
         vm.deal(contractAddress, 1000);
-        alephPaymentProcessor.removeTokenConfig(address(0));
+        alephPaymentProcessor.removeSwapConfig(address(0));
 
         vm.expectRevert("Invalid recipient address");
         alephPaymentProcessor.withdraw(address(0), payable(address(0)), 500);
@@ -1068,7 +1076,7 @@ contract AlephPaymentProcessorTest is Test {
     function test_withdraw_eth_vs_erc20_branches() public {
         // Test ETH withdrawal branch (line 254, BRDA:254,18,0)
         vm.deal(contractAddress, 1000);
-        alephPaymentProcessor.removeTokenConfig(address(0));
+        alephPaymentProcessor.removeSwapConfig(address(0));
 
         uint256 initialBalance = distributionRecipientAddress.balance;
         alephPaymentProcessor.withdraw(address(0), payable(distributionRecipientAddress), 500);
@@ -1076,7 +1084,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Test ERC20 withdrawal branch (line 254, BRDA:254,18,1)
         deal(address(usdc), contractAddress, 1000);
-        alephPaymentProcessor.removeTokenConfig(address(usdc));
+        alephPaymentProcessor.removeSwapConfig(address(usdc));
 
         uint256 initialUsdcBalance = usdc.balanceOf(distributionRecipientAddress);
         alephPaymentProcessor.withdraw(address(usdc), payable(distributionRecipientAddress), 300);
@@ -1086,7 +1094,7 @@ contract AlephPaymentProcessorTest is Test {
     function test_withdraw_transfer_failure() public {
         // Test transfer failure branch (line 260, BRDA:260,19,0)
         vm.deal(contractAddress, 100);
-        alephPaymentProcessor.removeTokenConfig(address(0));
+        alephPaymentProcessor.removeSwapConfig(address(0));
 
         // Try to withdraw more than available - should fail with "Insufficient balance"
         vm.expectRevert("Insufficient balance");
@@ -1133,15 +1141,15 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.setDevelopersRecipient(address(0));
     }
 
-    function test_removeTokenConfig_validation() public {
-        // Test invalid token config removal (line 361, BRDA:361,27,0)
-        vm.expectRevert("Invalid token config");
-        alephPaymentProcessor.removeTokenConfig(makeAddr("nonExistentToken"));
+    function test_removeSwapConfig_validation() public {
+        // Test invalid swap config removal (line 361, BRDA:361,27,0)
+        vm.expectRevert("Invalid swap config");
+        alephPaymentProcessor.removeSwapConfig(makeAddr("nonExistentToken"));
     }
 
     function test_swapV4_invalid_version_branch() public {
         // Test invalid uniswap version (line 391, BRDA:391,28,0)
-        alephPaymentProcessor.removeTokenConfig(address(0));
+        alephPaymentProcessor.removeSwapConfig(address(0));
         vm.deal(contractAddress, 1000);
 
         vm.expectRevert("Invalid uniswap version");
@@ -1246,7 +1254,7 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.withdraw(address(0), payable(distributionRecipientAddress), 100);
 
         // Test unconfigured token after removing config (should succeed)
-        alephPaymentProcessor.removeTokenConfig(address(0));
+        alephPaymentProcessor.removeSwapConfig(address(0));
         vm.deal(contractAddress, 1000);
 
         uint256 initialBalance = distributionRecipientAddress.balance;
@@ -1557,10 +1565,10 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.setDevelopersRecipient(address(0));
     }
 
-    function test_removeTokenConfig_zero_version() public {
+    function test_removeSwapConfig_zero_version() public {
         // Target token config validation (line 263, BRDA:263,27,0)
-        vm.expectRevert("Invalid token config");
-        alephPaymentProcessor.removeTokenConfig(makeAddr("testToken")); // Token has no config (version 0)
+        vm.expectRevert("Invalid swap config");
+        alephPaymentProcessor.removeSwapConfig(makeAddr("testToken")); // Token has no config (version 0)
     }
 
     function test_swapV4_invalid_uniswap_version() public {
@@ -1654,7 +1662,7 @@ contract AlephPaymentProcessorTest is Test {
         // Target withdraw validation branches (lines 183, 193, 199)
 
         // Test withdraw validation for invalid recipient (line 183, BRDA:183,17,0)
-        alephPaymentProcessor.removeTokenConfig(address(0));
+        alephPaymentProcessor.removeSwapConfig(address(0));
         vm.deal(contractAddress, 1000);
 
         vm.expectRevert("Invalid recipient address");
@@ -1796,7 +1804,7 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.setDevelopersRecipient(address(0));
     }
 
-    function test_setTokenConfigV2_success() public {
+    function test_setSwapConfigV2_success() public {
         address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
 
         // Create V2 path: DAI -> WETH -> ALEPH
@@ -1806,10 +1814,10 @@ contract AlephPaymentProcessorTest is Test {
         v2Path[2] = alephTokenAddress;
 
         // Set V2 config
-        alephPaymentProcessor.setTokenConfigV2(daiTokenAddress, v2Path);
+        alephPaymentProcessor.setSwapConfigV2(daiTokenAddress, v2Path);
 
         // Verify config
-        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(daiTokenAddress);
+        AlephPaymentProcessor.SwapConfig memory config = alephPaymentProcessor.getSwapConfig(daiTokenAddress);
         vm.assertEq(config.version, 2);
         vm.assertEq(config.token, daiTokenAddress);
         vm.assertEq(config.v2Path.length, 3);
@@ -1820,7 +1828,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(config.v4Path.length, 0);
     }
 
-    function test_setTokenConfigV2_direct_pair() public {
+    function test_setSwapConfigV2_direct_pair() public {
         address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
         // Create V2 path: WETH -> ALEPH (direct pair)
@@ -1829,27 +1837,27 @@ contract AlephPaymentProcessorTest is Test {
         v2Path[1] = alephTokenAddress;
 
         // Set V2 config
-        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, v2Path);
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, v2Path);
 
         // Verify config
-        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(wethTokenAddress);
+        AlephPaymentProcessor.SwapConfig memory config = alephPaymentProcessor.getSwapConfig(wethTokenAddress);
         vm.assertEq(config.version, 2);
         vm.assertEq(config.v2Path.length, 2);
         vm.assertEq(config.v2Path[0], wethTokenAddress);
         vm.assertEq(config.v2Path[1], alephTokenAddress);
     }
 
-    function test_setTokenConfigV2_access_control() public {
+    function test_setSwapConfigV2_access_control() public {
         address[] memory v2Path = new address[](2);
         v2Path[0] = usdcTokenAddress;
         v2Path[1] = alephTokenAddress;
 
         vm.prank(makeAddr("notOwner"));
         vm.expectRevert();
-        alephPaymentProcessor.setTokenConfigV2(usdcTokenAddress, v2Path);
+        alephPaymentProcessor.setSwapConfigV2(usdcTokenAddress, v2Path);
     }
 
-    function test_setTokenConfigV3_success() public {
+    function test_setSwapConfigV3_success() public {
         address uniTokenAddress = 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984;
 
         // Create V3 encoded path: UNI (3000 fee) -> WETH (3000 fee) -> ALEPH
@@ -1863,10 +1871,10 @@ contract AlephPaymentProcessorTest is Test {
         );
 
         // Set V3 config
-        alephPaymentProcessor.setTokenConfigV3(uniTokenAddress, v3Path);
+        alephPaymentProcessor.setSwapConfigV3(uniTokenAddress, v3Path);
 
         // Verify config
-        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(uniTokenAddress);
+        AlephPaymentProcessor.SwapConfig memory config = alephPaymentProcessor.getSwapConfig(uniTokenAddress);
         vm.assertEq(config.version, 3);
         vm.assertEq(config.token, uniTokenAddress);
         vm.assertGt(config.v3Path.length, 0);
@@ -1874,7 +1882,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(config.v4Path.length, 0);
     }
 
-    function test_setTokenConfigV3_direct_pair() public {
+    function test_setSwapConfigV3_direct_pair() public {
         address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
 
         // Create V3 encoded path: WETH (10000 fee) -> ALEPH (direct pair)
@@ -1885,15 +1893,15 @@ contract AlephPaymentProcessorTest is Test {
         );
 
         // Set V3 config
-        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, v3Path);
+        alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, v3Path);
 
         // Verify config
-        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(wethTokenAddress);
+        AlephPaymentProcessor.SwapConfig memory config = alephPaymentProcessor.getSwapConfig(wethTokenAddress);
         vm.assertEq(config.version, 3);
         vm.assertGt(config.v3Path.length, 0);
     }
 
-    function test_setTokenConfigV3_access_control() public {
+    function test_setSwapConfigV3_access_control() public {
         bytes memory v3Path = abi.encodePacked(
             usdcTokenAddress,
             uint24(500), // 0.05% fee
@@ -1902,34 +1910,34 @@ contract AlephPaymentProcessorTest is Test {
 
         vm.prank(makeAddr("notOwner"));
         vm.expectRevert();
-        alephPaymentProcessor.setTokenConfigV3(usdcTokenAddress, v3Path);
+        alephPaymentProcessor.setSwapConfigV3(usdcTokenAddress, v3Path);
     }
 
-    function test_getTokenConfig_all_versions() public {
+    function test_getSwapConfig_all_versions() public {
         // Test V2 config
         address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
         address[] memory v2Path = new address[](2);
         v2Path[0] = daiTokenAddress;
         v2Path[1] = alephTokenAddress;
-        alephPaymentProcessor.setTokenConfigV2(daiTokenAddress, v2Path);
+        alephPaymentProcessor.setSwapConfigV2(daiTokenAddress, v2Path);
 
         // Test V3 config
         address uniTokenAddress = 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984;
         bytes memory v3Path = abi.encodePacked(uniTokenAddress, uint24(3000), alephTokenAddress);
-        alephPaymentProcessor.setTokenConfigV3(uniTokenAddress, v3Path);
+        alephPaymentProcessor.setSwapConfigV3(uniTokenAddress, v3Path);
 
         // Verify V2 config
-        AlephPaymentProcessor.TokenConfig memory v2Config = alephPaymentProcessor.getTokenConfig(daiTokenAddress);
+        AlephPaymentProcessor.SwapConfig memory v2Config = alephPaymentProcessor.getSwapConfig(daiTokenAddress);
         vm.assertEq(v2Config.version, 2);
         vm.assertEq(v2Config.v2Path.length, 2);
 
         // Verify V3 config
-        AlephPaymentProcessor.TokenConfig memory v3Config = alephPaymentProcessor.getTokenConfig(uniTokenAddress);
+        AlephPaymentProcessor.SwapConfig memory v3Config = alephPaymentProcessor.getSwapConfig(uniTokenAddress);
         vm.assertEq(v3Config.version, 3);
         vm.assertGt(v3Config.v3Path.length, 0);
 
         // Verify existing V4 config still works
-        AlephPaymentProcessor.TokenConfig memory v4Config = alephPaymentProcessor.getTokenConfig(ethTokenAddress);
+        AlephPaymentProcessor.SwapConfig memory v4Config = alephPaymentProcessor.getSwapConfig(ethTokenAddress);
         vm.assertEq(v4Config.version, 4);
         vm.assertEq(v4Config.v4Path.length, 1);
     }
@@ -1945,18 +1953,18 @@ contract AlephPaymentProcessorTest is Test {
             hooks: IHooks(address(0)),
             hookData: bytes("")
         });
-        alephPaymentProcessor.setTokenConfigV4(testToken, v4Path);
+        alephPaymentProcessor.setSwapConfigV4(testToken, v4Path);
 
         // Verify V4 config
-        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(testToken);
+        AlephPaymentProcessor.SwapConfig memory config = alephPaymentProcessor.getSwapConfig(testToken);
         vm.assertEq(config.version, 4);
 
         // Update to V3 config
         bytes memory v3Path = abi.encodePacked(testToken, uint24(3000), alephTokenAddress);
-        alephPaymentProcessor.setTokenConfigV3(testToken, v3Path);
+        alephPaymentProcessor.setSwapConfigV3(testToken, v3Path);
 
         // Verify V3 config overwrote V4
-        config = alephPaymentProcessor.getTokenConfig(testToken);
+        config = alephPaymentProcessor.getSwapConfig(testToken);
         vm.assertEq(config.version, 3);
         vm.assertGt(config.v3Path.length, 0);
         vm.assertEq(config.v4Path.length, 0);
@@ -1965,10 +1973,10 @@ contract AlephPaymentProcessorTest is Test {
         address[] memory v2Path = new address[](2);
         v2Path[0] = testToken;
         v2Path[1] = alephTokenAddress;
-        alephPaymentProcessor.setTokenConfigV2(testToken, v2Path);
+        alephPaymentProcessor.setSwapConfigV2(testToken, v2Path);
 
         // Verify V2 config overwrote V3
-        config = alephPaymentProcessor.getTokenConfig(testToken);
+        config = alephPaymentProcessor.getSwapConfig(testToken);
         vm.assertEq(config.version, 2);
         vm.assertEq(config.v2Path.length, 2);
         vm.assertEq(config.v3Path.length, 0);
@@ -1983,13 +1991,10 @@ contract AlephPaymentProcessorTest is Test {
         v2Path[0] = wethTokenAddress;
         v2Path[1] = alephTokenAddress;
 
-        console.log("Setting V2 config...");
-        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, v2Path);
-        console.log("V2 config set successfully");
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, v2Path);
 
         // Give contract some WETH
         deal(wethTokenAddress, contractAddress, 1 ether);
-        console.log("WETH dealt to contract");
 
         // Record balances before
         uint256 wethBalanceBefore = weth.balanceOf(contractAddress);
@@ -1998,7 +2003,6 @@ contract AlephPaymentProcessorTest is Test {
         uint256 alephBurnedBefore = aleph.balanceOf(address(0));
 
         vm.assertEq(wethBalanceBefore, 1 ether);
-        console.log("Starting process call...");
 
         // Execute swap
         uint256 amountToSwap = 0.5 ether;
@@ -2028,7 +2032,7 @@ contract AlephPaymentProcessorTest is Test {
         v2Path[0] = daiTokenAddress;
         v2Path[1] = wethTokenAddress;
         v2Path[2] = alephTokenAddress;
-        alephPaymentProcessor.setTokenConfigV2(daiTokenAddress, v2Path);
+        alephPaymentProcessor.setSwapConfigV2(daiTokenAddress, v2Path);
 
         // Give contract some DAI
         deal(daiTokenAddress, contractAddress, 10000 * 1e18);
@@ -2058,7 +2062,7 @@ contract AlephPaymentProcessorTest is Test {
         address[] memory v2Path = new address[](2);
         v2Path[0] = address(0); // ETH (replaced with WETH during config)
         v2Path[1] = alephTokenAddress; // ALEPH
-        alephPaymentProcessor.setTokenConfigV2(address(0), v2Path);
+        alephPaymentProcessor.setSwapConfigV2(address(0), v2Path);
 
         // Give contract some ETH
         vm.deal(contractAddress, 5 ether);
@@ -2093,7 +2097,7 @@ contract AlephPaymentProcessorTest is Test {
         v2Path[0] = usdcTokenAddress;
         v2Path[1] = wethTokenAddress;
         v2Path[2] = alephTokenAddress;
-        alephPaymentProcessor.setTokenConfigV2(usdcTokenAddress, v2Path);
+        alephPaymentProcessor.setSwapConfigV2(usdcTokenAddress, v2Path);
 
         // Set USDC as stable token
         alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
@@ -2133,7 +2137,7 @@ contract AlephPaymentProcessorTest is Test {
             uint24(10000), // 1% fee
             alephTokenAddress
         );
-        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, v3Path);
+        alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, v3Path);
 
         // Give contract some WETH
         deal(wethTokenAddress, contractAddress, 2 ether);
@@ -2177,7 +2181,7 @@ contract AlephPaymentProcessorTest is Test {
             uint24(3000), // 0.3% fee
             alephTokenAddress
         );
-        alephPaymentProcessor.setTokenConfigV3(uniTokenAddress, v3Path);
+        alephPaymentProcessor.setSwapConfigV3(uniTokenAddress, v3Path);
 
         // Give contract some UNI
         deal(uniTokenAddress, contractAddress, 1000 * 1e18);
@@ -2208,7 +2212,7 @@ contract AlephPaymentProcessorTest is Test {
             uint24(10000), // 1% fee (same as working WETH test)
             alephTokenAddress
         );
-        alephPaymentProcessor.setTokenConfigV3(address(0), v3Path);
+        alephPaymentProcessor.setSwapConfigV3(address(0), v3Path);
 
         // Give contract some ETH
         vm.deal(contractAddress, 10 ether);
@@ -2247,7 +2251,7 @@ contract AlephPaymentProcessorTest is Test {
             uint24(10000), // 1% fee for WETH/ALEPH
             alephTokenAddress
         );
-        alephPaymentProcessor.setTokenConfigV3(usdcTokenAddress, v3Path);
+        alephPaymentProcessor.setSwapConfigV3(usdcTokenAddress, v3Path);
 
         // Set USDC as stable token
         alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
@@ -2277,6 +2281,205 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertGt(alephDistributionAfter, alephDistributionBefore);
     }
 
+    // ===== V4 PROCESS TESTS =====
+
+    function test_process_swap_V4_ETH_to_ALEPH() public {
+        // Configure V4 path: ETH → ALEPH
+        PathKey[] memory ethPath = new PathKey[](1);
+        ethPath[0] = PathKey({
+            intermediateCurrency: Currency.wrap(alephTokenAddress),
+            fee: 10000, // 1% fee
+            tickSpacing: 200,
+            hooks: IHooks(address(0)),
+            hookData: bytes("")
+        });
+        alephPaymentProcessor.setSwapConfigV4(address(0), ethPath);
+
+        // Give contract some ETH
+        vm.deal(contractAddress, 10 ether);
+
+        // Record balances before
+        uint256 ethBalanceBefore = contractAddress.balance;
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersBefore = aleph.balanceOf(developersRecipientAddress);
+
+        // Execute process with ETH
+        uint256 amountToProcess = 2 ether;
+        alephPaymentProcessor.process(address(0), uint128(amountToProcess), 0, 60);
+
+        // Verify ETH was consumed
+        uint256 ethBalanceAfter = contractAddress.balance;
+        vm.assertEq(ethBalanceAfter, ethBalanceBefore - amountToProcess);
+
+        // Verify ALEPH was distributed to both recipients
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersAfter = aleph.balanceOf(developersRecipientAddress);
+
+        vm.assertGt(alephDistributionAfter, alephDistributionBefore);
+        vm.assertGt(alephDevelopersAfter, alephDevelopersBefore);
+    }
+
+    function test_process_swap_V4_ALEPH_no_swap() public {
+        // ALEPH doesn't need swap configuration, it's processed directly
+
+        // Give contract some ALEPH
+        deal(address(aleph), contractAddress, 1000);
+
+        // Record balances before
+        uint256 alephContractBefore = aleph.balanceOf(contractAddress);
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersBefore = aleph.balanceOf(developersRecipientAddress);
+        uint256 burnedBefore = aleph.balanceOf(address(0));
+
+        // Execute process with ALEPH (no swap needed)
+        uint256 amountToProcess = 100;
+        alephPaymentProcessor.process(address(aleph), uint128(amountToProcess), 0, 60);
+
+        // Verify ALEPH was consumed from contract
+        uint256 alephContractAfter = aleph.balanceOf(contractAddress);
+        vm.assertEq(alephContractAfter, alephContractBefore - amountToProcess);
+
+        // Verify distribution and development portions
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        uint256 alephDevelopersAfter = aleph.balanceOf(developersRecipientAddress);
+
+        vm.assertGt(alephDistributionAfter, alephDistributionBefore);
+        vm.assertGt(alephDevelopersAfter, alephDevelopersBefore);
+
+        // Verify burn occurred (tokens sent to address(0))
+        // Note: ALEPH token doesn't reduce total supply on burn, just transfers to address(0)
+        uint256 burnedAfter = aleph.balanceOf(address(0));
+        vm.assertEq(burnedAfter - burnedBefore, 5); // 5% of 100 = 5
+    }
+
+    function test_process_swap_V4_USDC_to_ALEPH() public {
+        // Configure V4 path: USDC → ALEPH (direct swap, same as setUp)
+        PathKey[] memory usdcPath = new PathKey[](1);
+        usdcPath[0] = PathKey({
+            intermediateCurrency: Currency.wrap(address(aleph)),
+            fee: 10000,
+            tickSpacing: 200,
+            hooks: IHooks(address(0)),
+            hookData: bytes("")
+        });
+        alephPaymentProcessor.setSwapConfigV4(address(usdc), usdcPath);
+
+        // Set USDC as stable token
+        alephPaymentProcessor.setStableToken(address(usdc), true);
+
+        // Give contract some USDC
+        deal(address(usdc), contractAddress, 50000 * 1e6); // 50,000 USDC
+
+        // Record balances before
+        uint256 usdcBalanceBefore = usdc.balanceOf(contractAddress);
+        uint256 usdcDevelopersBefore = usdc.balanceOf(developersRecipientAddress);
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+
+        // Execute process with USDC
+        uint256 amountToProcess = 5000 * 1e6; // 5000 USDC
+        alephPaymentProcessor.process(address(usdc), uint128(amountToProcess), 0, 60);
+
+        // Verify USDC was consumed
+        uint256 usdcBalanceAfter = usdc.balanceOf(contractAddress);
+        vm.assertEq(usdcBalanceAfter, usdcBalanceBefore - amountToProcess);
+
+        // For stable tokens, developers portion should be sent directly in USDC
+        uint256 usdcDevelopersAfter = usdc.balanceOf(developersRecipientAddress);
+        vm.assertGt(usdcDevelopersAfter, usdcDevelopersBefore);
+
+        // Distribution + burn portions should be swapped to ALEPH
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        vm.assertGt(alephDistributionAfter, alephDistributionBefore);
+    }
+
+    function test_process_swap_V4_invalid_token() public {
+        address invalidTokenAddress = makeAddr("invalidToken");
+
+        // Configure V4 path for invalid token
+        PathKey[] memory invalidPath = new PathKey[](1);
+        invalidPath[0] = PathKey({
+            intermediateCurrency: Currency.wrap(alephTokenAddress),
+            fee: 10000,
+            tickSpacing: 200,
+            hooks: IHooks(address(0)),
+            hookData: bytes("")
+        });
+        alephPaymentProcessor.setSwapConfigV4(invalidTokenAddress, invalidPath);
+
+        // Try to give contract some of the invalid token (this should fail in real scenario)
+        // But for testing, we'll simulate it has some balance
+        vm.mockCall(
+            invalidTokenAddress, abi.encodeWithSignature("balanceOf(address)", contractAddress), abi.encode(1000 * 1e18)
+        );
+
+        // Record balances before
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+
+        // Execute process with invalid token - should fail during swap
+        vm.expectRevert(); // Expect the transaction to revert due to invalid token
+        alephPaymentProcessor.process(invalidTokenAddress, uint128(100 * 1e18), 0, 60);
+
+        // Verify no ALEPH was distributed (since transaction reverted)
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        vm.assertEq(alephDistributionAfter, alephDistributionBefore);
+    }
+
+    // ===== INVALID TOKEN PROCESS TESTS FOR V2/V3 =====
+
+    function test_process_swap_V2_invalid_token() public {
+        address invalidTokenAddress = makeAddr("invalidTokenV2");
+
+        // Configure V2 path for invalid token
+        address[] memory v2Path = new address[](2);
+        v2Path[0] = invalidTokenAddress;
+        v2Path[1] = alephTokenAddress;
+        alephPaymentProcessor.setSwapConfigV2(invalidTokenAddress, v2Path);
+
+        // Mock the token to have a balance
+        vm.mockCall(
+            invalidTokenAddress, abi.encodeWithSignature("balanceOf(address)", contractAddress), abi.encode(1000 * 1e18)
+        );
+
+        // Record balances before
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+
+        // Execute process with invalid token - should fail during swap
+        vm.expectRevert(); // Expect the transaction to revert due to invalid token
+        alephPaymentProcessor.process(invalidTokenAddress, uint128(100 * 1e18), 0, 60);
+
+        // Verify no ALEPH was distributed (since transaction reverted)
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        vm.assertEq(alephDistributionAfter, alephDistributionBefore);
+    }
+
+    function test_process_swap_V3_invalid_token() public {
+        address invalidTokenAddress = makeAddr("invalidTokenV3");
+
+        // Configure V3 path for invalid token
+        bytes memory v3Path = abi.encodePacked(
+            invalidTokenAddress,
+            uint24(10000), // 1% fee
+            alephTokenAddress
+        );
+        alephPaymentProcessor.setSwapConfigV3(invalidTokenAddress, v3Path);
+
+        // Mock the token to have a balance
+        vm.mockCall(
+            invalidTokenAddress, abi.encodeWithSignature("balanceOf(address)", contractAddress), abi.encode(1000 * 1e18)
+        );
+
+        // Record balances before
+        uint256 alephDistributionBefore = aleph.balanceOf(distributionRecipientAddress);
+
+        // Execute process with invalid token - should fail during swap
+        vm.expectRevert(); // Expect the transaction to revert due to invalid token
+        alephPaymentProcessor.process(invalidTokenAddress, uint128(100 * 1e18), 0, 60);
+
+        // Verify no ALEPH was distributed (since transaction reverted)
+        uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
+        vm.assertEq(alephDistributionAfter, alephDistributionBefore);
+    }
+
     function test_compare_V2_vs_V3_swap_efficiency() public {
         address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
         uint256 swapAmount = 1 ether;
@@ -2295,7 +2498,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Test V2 swap
         deal(wethTokenAddress, contractAddress, swapAmount);
-        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, v2Path);
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, v2Path);
         uint256 alephBefore = aleph.balanceOf(distributionRecipientAddress);
         alephPaymentProcessor.process(wethTokenAddress, uint128(swapAmount), 0, 60);
         uint256 alephAfterV2 = aleph.balanceOf(distributionRecipientAddress);
@@ -2303,7 +2506,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Test V3 swap with same amount
         deal(wethTokenAddress, contractAddress, swapAmount);
-        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, v3Path);
+        alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, v3Path);
         alephBefore = aleph.balanceOf(distributionRecipientAddress);
         alephPaymentProcessor.process(wethTokenAddress, uint128(swapAmount), 0, 60);
         uint256 alephAfterV3 = aleph.balanceOf(distributionRecipientAddress);
@@ -2312,9 +2515,6 @@ contract AlephPaymentProcessorTest is Test {
         // Both should receive some ALEPH (exact amounts may vary due to slippage/fees)
         vm.assertGt(alephReceivedV2, 0);
         vm.assertGt(alephReceivedV3, 0);
-
-        console.log("V2 ALEPH received:", alephReceivedV2);
-        console.log("V3 ALEPH received:", alephReceivedV3);
     }
 
     function test_invalid_version_swap_reverts() public {
@@ -2400,7 +2600,7 @@ contract AlephPaymentProcessorTest is Test {
         // Try to set empty path
         address[] memory emptyPath = new address[](0);
         vm.expectRevert("Invalid V2 path");
-        alephPaymentProcessor.setTokenConfigV2(testToken, emptyPath);
+        alephPaymentProcessor.setSwapConfigV2(testToken, emptyPath);
     }
 
     function test_V2_invalid_path_single_token() public {
@@ -2410,7 +2610,7 @@ contract AlephPaymentProcessorTest is Test {
         address[] memory singlePath = new address[](1);
         singlePath[0] = testToken;
         vm.expectRevert("Invalid V2 path");
-        alephPaymentProcessor.setTokenConfigV2(testToken, singlePath);
+        alephPaymentProcessor.setSwapConfigV2(testToken, singlePath);
     }
 
     function test_V2_path_with_identical_consecutive_tokens() public {
@@ -2422,7 +2622,7 @@ contract AlephPaymentProcessorTest is Test {
         invalidPath[1] = wethTokenAddress; // Same as previous - invalid
         invalidPath[2] = alephTokenAddress;
 
-        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, invalidPath);
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, invalidPath);
         deal(wethTokenAddress, contractAddress, 1 ether);
 
         // Should fail when trying to swap due to invalid pair
@@ -2443,12 +2643,12 @@ contract AlephPaymentProcessorTest is Test {
         longPath[4] = wethTokenAddress; // Back to WETH
         longPath[5] = alephTokenAddress;
 
-        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, longPath);
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, longPath);
         deal(wethTokenAddress, contractAddress, 1 ether);
 
         // May fail due to insufficient liquidity or gas limits
         // But configuration should succeed
-        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(wethTokenAddress);
+        AlephPaymentProcessor.SwapConfig memory config = alephPaymentProcessor.getSwapConfig(wethTokenAddress);
         vm.assertEq(config.version, 2);
         vm.assertEq(config.v2Path.length, 6);
     }
@@ -2460,7 +2660,7 @@ contract AlephPaymentProcessorTest is Test {
         address[] memory path = new address[](2);
         path[0] = wethTokenAddress;
         path[1] = alephTokenAddress;
-        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, path);
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, path);
 
         deal(wethTokenAddress, contractAddress, 1 ether);
 
@@ -2474,7 +2674,7 @@ contract AlephPaymentProcessorTest is Test {
         address[] memory path = new address[](2);
         path[0] = address(0); // ETH (replaced with WETH during configuration)
         path[1] = alephTokenAddress; // ALEPH
-        alephPaymentProcessor.setTokenConfigV2(address(0), path);
+        alephPaymentProcessor.setSwapConfigV2(address(0), path);
 
         // Give contract native ETH
         vm.deal(contractAddress, 1 ether);
@@ -2497,7 +2697,7 @@ contract AlephPaymentProcessorTest is Test {
         address[] memory path = new address[](2);
         path[0] = wethTokenAddress;
         path[1] = alephTokenAddress;
-        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, path);
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, path);
 
         // Deal max uint128 amount (unrealistic but tests edge case)
         uint128 maxAmount = type(uint128).max;
@@ -2515,7 +2715,7 @@ contract AlephPaymentProcessorTest is Test {
         address[] memory path = new address[](2);
         path[0] = wethTokenAddress;
         path[1] = alephTokenAddress;
-        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, path);
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, path);
 
         deal(wethTokenAddress, contractAddress, 1 ether);
 
@@ -2534,7 +2734,7 @@ contract AlephPaymentProcessorTest is Test {
         invalidPath[0] = wethTokenAddress;
         invalidPath[1] = randomToken; // This pair likely doesn't exist
 
-        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, invalidPath);
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, invalidPath);
         deal(wethTokenAddress, contractAddress, 1 ether);
 
         // Should fail when trying to swap
@@ -2550,7 +2750,7 @@ contract AlephPaymentProcessorTest is Test {
         // Try to set empty path
         bytes memory emptyPath = "";
         vm.expectRevert("V3 path too short");
-        alephPaymentProcessor.setTokenConfigV3(testToken, emptyPath);
+        alephPaymentProcessor.setSwapConfigV3(testToken, emptyPath);
     }
 
     function test_V3_invalid_path_too_short() public {
@@ -2563,7 +2763,7 @@ contract AlephPaymentProcessorTest is Test {
         );
 
         vm.expectRevert("V3 path too short");
-        alephPaymentProcessor.setTokenConfigV3(testToken, shortPath);
+        alephPaymentProcessor.setSwapConfigV3(testToken, shortPath);
     }
 
     function test_V3_invalid_path_odd_length() public {
@@ -2576,7 +2776,7 @@ contract AlephPaymentProcessorTest is Test {
             oddPath[i] = bytes1(uint8(i % 256));
         }
 
-        alephPaymentProcessor.setTokenConfigV3(testToken, oddPath);
+        alephPaymentProcessor.setSwapConfigV3(testToken, oddPath);
         deal(testToken, contractAddress, 1000 * 1e6);
 
         // Should fail during swap due to invalid path encoding
@@ -2594,7 +2794,7 @@ contract AlephPaymentProcessorTest is Test {
             alephTokenAddress
         );
 
-        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, pathWithInvalidFee);
+        alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, pathWithInvalidFee);
         deal(wethTokenAddress, contractAddress, 1 ether);
 
         // Should fail during swap due to non-existent pool
@@ -2619,11 +2819,11 @@ contract AlephPaymentProcessorTest is Test {
             alephTokenAddress
         );
 
-        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, longPath);
+        alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, longPath);
         deal(wethTokenAddress, contractAddress, 1 ether);
 
         // Configuration should succeed
-        AlephPaymentProcessor.TokenConfig memory config = alephPaymentProcessor.getTokenConfig(wethTokenAddress);
+        AlephPaymentProcessor.SwapConfig memory config = alephPaymentProcessor.getSwapConfig(wethTokenAddress);
         vm.assertEq(config.version, 3);
         vm.assertGt(config.v3Path.length, 43); // At least minimum valid length
     }
@@ -2638,7 +2838,7 @@ contract AlephPaymentProcessorTest is Test {
             wethTokenAddress // Same token - invalid for swapping
         );
 
-        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, selfSwapPath);
+        alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, selfSwapPath);
         deal(wethTokenAddress, contractAddress, 1 ether);
 
         // Should fail during swap
@@ -2656,7 +2856,7 @@ contract AlephPaymentProcessorTest is Test {
             alephTokenAddress
         );
 
-        alephPaymentProcessor.setTokenConfigV3(address(0), pathWithMultipleZeros);
+        alephPaymentProcessor.setSwapConfigV3(address(0), pathWithMultipleZeros);
         vm.deal(contractAddress, 1 ether);
 
         // Should fail due to invalid path structure
@@ -2669,7 +2869,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Configure valid path
         bytes memory path = abi.encodePacked(wethTokenAddress, uint24(10000), alephTokenAddress);
-        alephPaymentProcessor.setTokenConfigV3(wethTokenAddress, path);
+        alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, path);
 
         deal(wethTokenAddress, contractAddress, 1 ether);
 
@@ -2685,7 +2885,7 @@ contract AlephPaymentProcessorTest is Test {
             uint24(10000),
             alephTokenAddress
         );
-        alephPaymentProcessor.setTokenConfigV3(address(0), path);
+        alephPaymentProcessor.setSwapConfigV3(address(0), path);
 
         // Give contract native ETH
         vm.deal(contractAddress, 1 ether);
@@ -2706,7 +2906,7 @@ contract AlephPaymentProcessorTest is Test {
         address[] memory v2PathEth = new address[](2);
         v2PathEth[0] = address(0); // ETH (replaced with WETH during configuration)
         v2PathEth[1] = alephTokenAddress;
-        alephPaymentProcessor.setTokenConfigV2(address(0), v2PathEth);
+        alephPaymentProcessor.setSwapConfigV2(address(0), v2PathEth);
 
         // Test V3 ETH path configuration with address(0) replacement
         bytes memory v3PathEth = abi.encodePacked(
@@ -2714,10 +2914,10 @@ contract AlephPaymentProcessorTest is Test {
             uint24(10000),
             alephTokenAddress
         );
-        alephPaymentProcessor.setTokenConfigV3(address(0), v3PathEth);
+        alephPaymentProcessor.setSwapConfigV3(address(0), v3PathEth);
 
         // Verify configurations were set correctly
-        AlephPaymentProcessor.TokenConfig memory v2Config = alephPaymentProcessor.getTokenConfig(address(0));
+        AlephPaymentProcessor.SwapConfig memory v2Config = alephPaymentProcessor.getSwapConfig(address(0));
         assertEq(v2Config.version, 3); // V3 overwrote V2, that's expected
         assertEq(v2Config.v3Path.length, 43); // 20 + 3 + 20 bytes
 
@@ -2742,7 +2942,7 @@ contract AlephPaymentProcessorTest is Test {
         address[] memory path = new address[](2);
         path[0] = wethTokenAddress;
         path[1] = alephTokenAddress;
-        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, path);
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, path);
 
         deal(wethTokenAddress, contractAddress, 1 ether);
 
@@ -2759,7 +2959,7 @@ contract AlephPaymentProcessorTest is Test {
         address[] memory path = new address[](2);
         path[0] = wethTokenAddress;
         path[1] = alephTokenAddress;
-        alephPaymentProcessor.setTokenConfigV2(wethTokenAddress, path);
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, path);
 
         deal(wethTokenAddress, contractAddress, 1 ether);
 
@@ -2852,7 +3052,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Configure valid ETH path
         bytes memory v3Path = abi.encodePacked(address(0), uint24(10000), alephTokenAddress);
-        alephPaymentProcessor.setTokenConfigV3(address(0), v3Path);
+        alephPaymentProcessor.setSwapConfigV3(address(0), v3Path);
 
         // Try zero amount ETH swap - this actually processes the entire balance (expected behavior)
         // Main goal is to verify it doesn't revert
@@ -2866,16 +3066,16 @@ contract AlephPaymentProcessorTest is Test {
         address[] memory v2Path = new address[](2);
         v2Path[0] = testToken;
         v2Path[1] = alephTokenAddress;
-        alephPaymentProcessor.setTokenConfigV2(testToken, v2Path);
+        alephPaymentProcessor.setSwapConfigV2(testToken, v2Path);
 
-        AlephPaymentProcessor.TokenConfig memory configV2 = alephPaymentProcessor.getTokenConfig(testToken);
+        AlephPaymentProcessor.SwapConfig memory configV2 = alephPaymentProcessor.getSwapConfig(testToken);
         vm.assertEq(configV2.version, 2);
 
         // Override with V3 config
         bytes memory v3Path = abi.encodePacked(testToken, uint24(3000), alephTokenAddress);
-        alephPaymentProcessor.setTokenConfigV3(testToken, v3Path);
+        alephPaymentProcessor.setSwapConfigV3(testToken, v3Path);
 
-        AlephPaymentProcessor.TokenConfig memory configV3 = alephPaymentProcessor.getTokenConfig(testToken);
+        AlephPaymentProcessor.SwapConfig memory configV3 = alephPaymentProcessor.getSwapConfig(testToken);
         vm.assertEq(configV3.version, 3);
         vm.assertEq(configV3.v2Path.length, 0); // Should be cleared
     }
@@ -2889,7 +3089,7 @@ contract AlephPaymentProcessorTest is Test {
             uint24(10000),
             alephTokenAddress
         );
-        alephPaymentProcessor.setTokenConfigV3(address(0), v3Path);
+        alephPaymentProcessor.setSwapConfigV3(address(0), v3Path);
 
         vm.deal(contractAddress, 1 ether);
 
