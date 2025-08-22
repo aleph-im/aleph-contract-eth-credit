@@ -119,15 +119,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
 
         if (isStableToken[_token] && _token != address(aleph)) {
             // For stable tokens: send developers portion directly, swap the rest
-            if (_token != address(0)) {
-                require(
-                    IERC20(_token).transfer(developersRecipient, developersAmount),
-                    "Transfer to developers recipient failed"
-                );
-            } else {
-                (bool success,) = developersRecipient.call{value: developersAmount}("");
-                require(success, "ETH transfer to developers recipient failed");
-            }
+            transferTokenOrEth(_token, developersRecipient, developersAmount, "Transfer to developers recipient failed");
 
             // Swap burn + distribution portions to ALEPH
             uint256 swapAmount = burnAmount + distributionAmount;
@@ -184,19 +176,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
 
         uint256 amount = getAmountIn(_token, _amount);
 
-        // Transfer native ETH or ERC20 tokens
-        // https://diligence.consensys.io/blog/2019/09/stop-using-soliditys-transfer-now/
-        // _to.send(_amount) => (bool success, ) = _to.call{value: _amount}("");
-
-        bool success;
-
-        if (_token != address(0)) {
-            success = IERC20(_token).transfer(_to, amount);
-        } else {
-            (success,) = _to.call{value: amount}("");
-        }
-
-        require(success, "Transfer failed");
+        transferTokenOrEth(_token, _to, amount, "Transfer failed");
     }
 
     function getAmountIn(address _token, uint128 _amountIn) internal view returns (uint128 amountIn) {
@@ -208,6 +188,20 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         require(balance >= amountIn, "Insufficient balance");
 
         return amountIn;
+    }
+
+    function transferTokenOrEth(address _token, address _recipient, uint256 _amount, string memory _errorMessage)
+        internal
+        onlyRole(adminRole)
+    {
+        // Transfer native ETH or ERC20 tokens
+        // https://diligence.consensys.io/blog/2019/09/stop-using-soliditys-transfer-now/
+        if (_token != address(0)) {
+            require(IERC20(_token).transfer(_recipient, _amount), _errorMessage);
+        } else {
+            (bool success,) = _recipient.call{value: _amount}("");
+            require(success, _errorMessage);
+        }
     }
 
     function setBurnPercentage(uint8 _newBurnPercentage) external onlyOwner {
