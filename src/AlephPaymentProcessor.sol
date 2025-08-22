@@ -15,20 +15,12 @@ import {IPermit2} from "@uniswap/permit2/src/interfaces/IPermit2.sol";
 import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PathKey} from "@uniswap/v4-periphery/src/libraries/PathKey.sol";
 
-import {UniversalRouter} from "../lib/universal-router/contracts/UniversalRouter.sol";
-import {Commands} from "../lib/universal-router/contracts/libraries/Commands.sol";
-import {IV4Router} from "../lib/v4-periphery/src/interfaces/IV4Router.sol";
-import {Actions} from "../lib/v4-periphery/src/libraries/Actions.sol";
-import {IPermit2} from "../lib/permit2/src/interfaces/IPermit2.sol";
-import {Currency} from "../lib/v4-core/src/types/Currency.sol";
-import {PathKey} from "../lib/v4-periphery/src/libraries/PathKey.sol";
-
 contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, AccessControlUpgradeable {
     using SafeERC20 for IERC20;
 
     struct TokenConfig {
+        uint8 version; // 2, 3, 4 - pack with address
         address token;
-        uint8 version; // 2, 3, 4
         PathKey[] path;
     }
 
@@ -119,8 +111,10 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
         uint128 amountIn = getAmountIn(_token, _amountIn);
 
         // Calculate portions from initial amount: 5% developers, 5% burn, 90% distribution
-        uint256 developersAmount = (uint256(amountIn) * developersPercentage) / 100;
-        uint256 burnAmount = (uint256(amountIn) * burnPercentage) / 100;
+        uint8 cachedDevelopersPercentage = developersPercentage;
+        uint8 cachedBurnPercentage = burnPercentage;
+        uint256 developersAmount = (uint256(amountIn) * cachedDevelopersPercentage) / 100;
+        uint256 burnAmount = (uint256(amountIn) * cachedBurnPercentage) / 100;
         uint256 distributionAmount = uint256(amountIn) - developersAmount - burnAmount;
 
         if (isStableToken[_token] && _token != address(ALEPH)) {
@@ -159,8 +153,8 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
                 _token != address(ALEPH) ? swapV4(_token, amountIn, _amountOutMinimum, _ttl) : amountIn;
 
             // Calculate ALEPH amounts based on original input percentages
-            uint256 alephDevelopersAmount = (alephReceived * developersPercentage) / 100;
-            uint256 alephBurnAmount = (alephReceived * burnPercentage) / 100;
+            uint256 alephDevelopersAmount = (alephReceived * cachedDevelopersPercentage) / 100;
+            uint256 alephBurnAmount = (alephReceived * cachedBurnPercentage) / 100;
             uint256 alephDistributionAmount = alephReceived - alephDevelopersAmount - alephBurnAmount;
 
             require(
@@ -259,7 +253,7 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
     }
 
     function setTokenConfigV4(address _address, PathKey[] calldata _path) external onlyOwner {
-        tokenConfig[_address] = TokenConfig({token: _address, version: 4, path: _path});
+        tokenConfig[_address] = TokenConfig({version: 4, token: _address, path: _path});
 
         emit TokenConfigUpdated(_address, 4);
     }
@@ -280,7 +274,10 @@ contract AlephPaymentProcessor is Initializable, Ownable2StepUpgradeable, Access
 
     function approve(address _token, uint160 _amount, uint48 _ttl) internal onlyRole(ADMIN_ROLE) {
         uint48 expiration = uint48(block.timestamp) + _ttl;
-        IERC20(_token).approve(address(permit2), type(uint256).max);
+        // Only approve if current allowance is insufficient
+        if (IERC20(_token).allowance(address(this), address(permit2)) < _amount) {
+            IERC20(_token).approve(address(permit2), type(uint256).max);
+        }
         permit2.approve(_token, address(router), _amount, expiration);
     }
 
