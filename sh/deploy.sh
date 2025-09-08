@@ -1,2 +1,2 @@
 forge clean && forge build
-forge script script/AlephPaymentProcessor.s.sol:AlephPaymentProcessorScript --rpc-url https://reth-ethereum.ithaca.xyz/rpc --ledger --broadcast --verify -vvvv
+forge script script/deploy.s.sol:DeployProductionScript --slow --broadcast --verify -vvvv --ledger

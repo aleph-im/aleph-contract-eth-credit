@@ -8,24 +8,17 @@ import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PathKey} from "@uniswap/v4-periphery/src/libraries/PathKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 
-//
-contract AlephPaymentProcessorScript is Script {
-    AlephPaymentProcessor public alephPaymentProcessor;
-
-    function setUp() public {}
-
-    function run() public {
-        vm.startBroadcast();
-
-        address alephTokenAddress = 0x27702a26126e0B3702af63Ee09aC4d1A084EF628;
-        address distributionRecipientAddress = address(0); // "TODO"
-        address developersRecipientAddress = address(0); // "TODO"
-        uint8 burnPercentage = 5; // 5% burn
-        uint8 developersPercentage = 5; // 5% to developers
-        address uniswapRouterAddress = 0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af;
-        address permit2Address = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
-        address wethAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2; // Mainnet WETH
-
+contract BaseDeployScript is Script {
+    function deploy(
+        address alephTokenAddress,
+        address distributionRecipientAddress,
+        address developersRecipientAddress,
+        address uniswapRouterAddress,
+        address permit2Address,
+        address wethAddress,
+        uint8 burnPercentage,
+        uint8 developersPercentage
+    ) internal returns (address) {
         address proxy = Upgrades.deployUUPSProxy(
             "AlephPaymentProcessor.sol",
             abi.encodeCall(
@@ -43,7 +36,9 @@ contract AlephPaymentProcessorScript is Script {
             )
         );
 
-        alephPaymentProcessor = AlephPaymentProcessor(payable(proxy));
+        AlephPaymentProcessor alephPaymentProcessor = AlephPaymentProcessor(
+            payable(proxy)
+        );
 
         // Init ETH/ALEPH PoolKey for uniswap v4 (0x8e1ff09f103511aca5fa8a007e691ed18a2982b37749e8c8bdf914eacdff3a21)
         address ethTokenAddress = address(0); // 0x0000000000000000000000000000000000000000
@@ -73,9 +68,54 @@ contract AlephPaymentProcessorScript is Script {
         alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
 
         console.log(proxy);
-        console.log(alephPaymentProcessor.distributionRecipient());
-        console.log(alephPaymentProcessor.developersRecipient());
-        console.log(alephPaymentProcessor.burnPercentage());
-        console.log(alephPaymentProcessor.developersPercentage());
+        return proxy;
+    }
+}
+
+contract DeployStagingScript is BaseDeployScript {
+    function setUp() public {}
+
+    function run() public {
+        // ---
+
+        vm.createSelectFork(vm.rpcUrl("sepolia"));
+        vm.startBroadcast();
+
+        address c1 = deploy(
+            0x4b3f52fFF693D898578f132f0222877848E09A8C,
+            0xC07192fcC38E8e14e7322596DbDa30Eab998150C,
+            0xeCCdEA12eAAAfF747471F968Dc65D1E37ecb4B31,
+            0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD,
+            0x000000000022D473030F116dDEE9F6B43aC78BA3,
+            0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14,
+            5,
+            5
+        );
+
+        console.log(c1);
+        vm.stopBroadcast();
+    }
+}
+
+contract DeployProductionScript is BaseDeployScript {
+    function setUp() public {}
+
+    function run() public {
+        vm.createSelectFork(vm.rpcUrl("mainnet"));
+        vm.startBroadcast();
+
+        address c2 = deploy(
+            0x27702a26126e0B3702af63Ee09aC4d1A084EF628,
+            address(0),
+            address(0),
+            0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af,
+            0x000000000022D473030F116dDEE9F6B43aC78BA3,
+            0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2,
+            5,
+            5
+        );
+
+        console.log(c2);
+        vm.stopBroadcast();
     }
 }

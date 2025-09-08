@@ -1,2 +1,2 @@
 forge clean && forge build
-forge script script/AlephPaymentProcessor.s.sol:AlephPaymentProcessorScript --rpc-url http://localhost:8545 --broadcast -vvvv --interactives 1
+forge script script/deploy.s.sol:DeployStagingScript --rpc-url http://localhost:8545 --broadcast -vvvv --interactives 1

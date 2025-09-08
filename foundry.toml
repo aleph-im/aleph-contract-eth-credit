@@ -10,3 +10,8 @@ extra_output = ["storageLayout"]
 via_ir = true
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+
+[rpc_endpoints]
+sepolia = "https://ethereum-sepolia-rpc.publicnode.com"
+mainnet = "https://ethereum-rpc.publicnode.com"
+local = "http://localhost:8545"
