@@ -36,9 +36,7 @@ contract BaseDeployScript is Script {
             )
         );
 
-        AlephPaymentProcessor alephPaymentProcessor = AlephPaymentProcessor(
-            payable(proxy)
-        );
+        AlephPaymentProcessor alephPaymentProcessor = AlephPaymentProcessor(payable(proxy));
 
         // Init ETH/ALEPH PoolKey for uniswap v4 (0x8e1ff09f103511aca5fa8a007e691ed18a2982b37749e8c8bdf914eacdff3a21)
         address ethTokenAddress = address(0); // 0x0000000000000000000000000000000000000000
@@ -67,7 +65,6 @@ contract BaseDeployScript is Script {
         // Set USDC as stable token
         alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
 
-        console.log(proxy);
         return proxy;
     }
 }
