@@ -16,6 +16,7 @@ contract BaseDeployScript is Script {
         address uniswapRouterAddress,
         address permit2Address,
         address wethAddress,
+        address usdcAddress,
         uint8 burnPercentage,
         uint8 developersPercentage
     ) internal returns (address) {
@@ -51,7 +52,7 @@ contract BaseDeployScript is Script {
         alephPaymentProcessor.setSwapConfigV4(ethTokenAddress, ethPath);
 
         // Init ALEPH/USDC PoolKey for uniswap v4 (0x8ee28047ee72104999ce30d35f92e1757a7a94a5ac2bc200f4c2da1eabfe6429)
-        address usdcTokenAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+        address usdcTokenAddress = usdcAddress;
         PathKey[] memory usdcPath = new PathKey[](1);
         usdcPath[0] = PathKey({
             intermediateCurrency: Currency.wrap(alephTokenAddress),
@@ -85,6 +86,7 @@ contract DeployStagingScript is BaseDeployScript {
             0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD,
             0x000000000022D473030F116dDEE9F6B43aC78BA3,
             0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14,
+            0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48,
             5,
             5
         );
@@ -108,6 +110,7 @@ contract DeployProductionScript is BaseDeployScript {
             0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af,
             0x000000000022D473030F116dDEE9F6B43aC78BA3,
             0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2,
+            0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48,
             5,
             5
         );
