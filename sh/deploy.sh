@@ -15,13 +15,13 @@ forge clean
 
 case $ENVIRONMENT in
     "local")
-        forge script script/deploy.s.sol:DeployStagingScript --optimize --rpc-url http://localhost:8545 --broadcast -vvvv --interactives 1
+        forge script script/Deploy.s.sol:DeployStagingScript --optimize --rpc-url http://localhost:8545 --broadcast -vvvv --interactives 1
         ;;
     "staging")
-        forge script script/deploy.s.sol:DeployStagingScript --optimize --slow --broadcast --verify -vvvv --interactives 1 --etherscan-api-key $ETHERSCAN_API_KEY
+        forge script script/Deploy.s.sol:DeployStagingScript --optimize --slow --broadcast --verify -vvvv --interactives 1 --etherscan-api-key $ETHERSCAN_API_KEY
         ;;
     "production")
-        forge script script/deploy.s.sol:DeployProductionScript --optimize --slow --broadcast --verify -vvvv --ledger --etherscan-api-key $ETHERSCAN_API_KEY
+        forge script script/Deploy.s.sol:DeployProductionScript --optimize --slow --broadcast --verify -vvvv --ledger --etherscan-api-key $ETHERSCAN_API_KEY
         ;;
     *)
         echo "Invalid environment. Use: local, staging, or production"

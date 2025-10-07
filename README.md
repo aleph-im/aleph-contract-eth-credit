@@ -50,9 +50,19 @@ struct SwapConfig {
 }
 ```
 
-## Usage Examples
+## Documentation
 
-See [UNISWAP_CONFIG_EXAMPLES.md](./UNISWAP_CONFIG_EXAMPLES.md) for detailed configuration examples for all Uniswap versions.
+### 🚀 Getting Started
+- **[Quick Start Guide](./docs/QUICK_START_GUIDE.md)** - Get up and running in 5 minutes
+- **[Uniswap Configuration Examples](./docs/UNISWAP_CONFIG_EXAMPLES.md)** - Token configuration for V2/V3/V4
+
+### 📚 Complete Reference
+- **[Complete Contract Documentation](./docs/ALEPH_PAYMENT_PROCESSOR_DOCS.md)** - Comprehensive guide covering:
+  - Contract architecture and security features
+  - Complete public interface documentation
+  - Swap configuration system for all Uniswap versions
+  - Integration guidelines and best practices
+  - Deployment considerations and usage patterns
 
 ## Development Setup
 
