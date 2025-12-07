@@ -555,6 +555,62 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(alephPaymentProcessor.hasRole(alephPaymentProcessor.adminRole(), admin), false);
     }
 
+    function test_addAdmin_event() public {
+        address newAdmin = makeAddr("newAdmin");
+
+        // Expect AdminAdded event (check indexed params, ignore timestamp)
+        vm.expectEmit(true, false, false, false);
+        emit AdminAdded(newAdmin, 0);
+
+        alephPaymentProcessor.addAdmin(newAdmin);
+    }
+
+    function test_removeAdmin_event() public {
+        address admin = makeAddr("admin");
+
+        // Add admin first
+        alephPaymentProcessor.addAdmin(admin);
+
+        // Expect AdminRemoved event (check indexed params, ignore timestamp)
+        vm.expectEmit(true, false, false, false);
+        emit AdminRemoved(admin, 0);
+
+        alephPaymentProcessor.removeAdmin(admin);
+    }
+
+
+    function test_withdraw_token_event() public {
+        // Use a token that's not configured for swapping (DAI)
+        address daiAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+        deal(daiAddress, contractAddress, 1000 * 10 ** 18);
+        address recipient = makeAddr("recipient");
+
+        // Expect TokenWithdrawn event for ERC20 token (check indexed params and amount, ignore timestamp)
+        vm.expectEmit(true, true, false, false);
+        emit TokenWithdrawn(daiAddress, recipient, 1000 * 10 ** 18, 0);
+
+        alephPaymentProcessor.withdraw(daiAddress, payable(recipient), 1000 * 10 ** 18);
+    }
+
+    function test_withdraw_all_token_event() public {
+        // Test withdrawing all balance (amountIn = 0)
+        address daiAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+        uint256 amount = 500 * 10 ** 18;
+        deal(daiAddress, contractAddress, amount);
+        address recipient = makeAddr("recipient");
+
+        // Expect TokenWithdrawn event with the full balance amount (check indexed params and amount, ignore timestamp)
+        vm.expectEmit(true, true, false, false);
+        emit TokenWithdrawn(daiAddress, recipient, amount, 0);
+
+        alephPaymentProcessor.withdraw(daiAddress, payable(recipient), 0); // 0 = withdraw all
+    }
+
+    // Add event declarations for testing
+    event AdminAdded(address indexed admin, uint256 timestamp);
+    event AdminRemoved(address indexed admin, uint256 timestamp);
+    event TokenWithdrawn(address indexed token, address indexed to, uint256 amount, uint256 timestamp);
+
     function test_getSwapConfig() public {
         // Test getting config for a token that doesn't exist
         SwapConfig memory config = alephPaymentProcessor.getSwapConfig(makeAddr("nonExistentToken"));

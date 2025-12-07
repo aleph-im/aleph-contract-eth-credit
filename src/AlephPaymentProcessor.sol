@@ -79,6 +79,9 @@ contract AlephPaymentProcessor is
     event BurnPercentageUpdated(uint8 oldPercentage, uint8 newPercentage, uint256 timestamp);
     event DevelopersPercentageUpdated(uint8 oldPercentage, uint8 newPercentage, uint256 timestamp);
     event StableTokenUpdated(address indexed token, bool isStable, uint256 timestamp);
+    event TokenWithdrawn(address indexed token, address indexed to, uint256 amount, uint256 timestamp);
+    event AdminAdded(address indexed admin, uint256 timestamp);
+    event AdminRemoved(address indexed admin, uint256 timestamp);
 
     // Payment settings
     address public distributionRecipient; // Address that receives the distribution portion of payments
@@ -264,6 +267,8 @@ contract AlephPaymentProcessor is
         if (amount == 0) revert InsufficientBalance();
 
         transferTokenOrEth(_token, _to, amount, "Transfer failed");
+
+        emit TokenWithdrawn(_token, _to, amount, block.timestamp);
     }
 
     /**
@@ -398,6 +403,8 @@ contract AlephPaymentProcessor is
     function addAdmin(address _newAdmin) external onlyOwner {
         _validAddr(_newAdmin);
         _grantRole(adminRole, _newAdmin);
+
+        emit AdminAdded(_newAdmin, block.timestamp);
     }
 
     /**
@@ -408,6 +415,8 @@ contract AlephPaymentProcessor is
     function removeAdmin(address _admin) external onlyOwner {
         _validAddr(_admin);
         _revokeRole(adminRole, _admin);
+
+        emit AdminRemoved(_admin, block.timestamp);
     }
 
     /**
