@@ -174,7 +174,11 @@ contract AlephPaymentProcessor is
         nonReentrant
     {
         if (_ttl < 60 || _ttl > 3600) revert TtlOutOfRange();
-        if (_token != address(aleph) && swapConfig[_token].v == 0) {
+
+        // Cache swap config to avoid multiple SLOAD operations
+        SwapConfig memory cachedSwapConfig = swapConfig[_token];
+
+        if (_token != address(aleph) && cachedSwapConfig.v == 0) {
             revert NotConfigured();
         }
 
@@ -227,7 +231,7 @@ contract AlephPaymentProcessor is
                 alephBurnAmount,
                 alephDistributionAmount,
                 developersAmount,
-                swapConfig[_token].v,
+                cachedSwapConfig.v,
                 isStable
             );
         } else {
@@ -254,7 +258,7 @@ contract AlephPaymentProcessor is
                 alephBurnAmount,
                 alephDistributionAmount,
                 alephDevelopersAmount,
-                _token != alephAddress ? swapConfig[_token].v : 0,
+                _token != alephAddress ? cachedSwapConfig.v : 0,
                 isStable
             );
         }
