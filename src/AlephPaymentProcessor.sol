@@ -34,6 +34,7 @@ error InvalidSwapConfig();
 error PathTooShort();
 error BurnFailed();
 error ZeroAmount();
+error ZeroMinimumOutput();
 
 interface IBurnable {
     function burn(uint256 amount) external;
@@ -181,6 +182,11 @@ contract AlephPaymentProcessor is
 
         // Prevent unnecessary processing of zero amounts
         if (amountIn == 0) revert ZeroAmount();
+
+        // Prevent 100% slippage by requiring minimum output for non-ALEPH swaps
+        if (_token != address(aleph) && _amountOutMinimum == 0) {
+            revert ZeroMinimumOutput();
+        }
 
         // Cache storage variables for gas optimization
         uint8 cachedDevelopersPercentage = developersPercentage;
