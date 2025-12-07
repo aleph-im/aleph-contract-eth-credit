@@ -397,6 +397,32 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.process(address(aleph), 100, 0, 60);
     }
 
+    function test_zero_amount_and_zero_balance() public {
+        // Test the scenario where both balance is 0 and _amountIn is 0
+        // This should now revert with ZeroAmount() instead of processing through the entire swap flow
+        deal(address(aleph), contractAddress, 0);
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroAmount()"));
+        alephPaymentProcessor.process(address(aleph), 0, 0, 60);
+    }
+
+    function test_zero_amount_eth_and_zero_balance() public {
+        // Test the same scenario with ETH (address(0))
+        // Ensure contract has 0 ETH balance
+        vm.deal(contractAddress, 0);
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroAmount()"));
+        alephPaymentProcessor.process(address(0), 0, 0, 60);
+    }
+
+    function test_zero_amount_usdc_and_zero_balance() public {
+        // Test the same scenario with ERC20 token (USDC)
+        deal(address(usdc), contractAddress, 0);
+
+        vm.expectRevert(abi.encodeWithSignature("ZeroAmount()"));
+        alephPaymentProcessor.process(address(usdc), 0, 0, 60);
+    }
+
     function test_edge_case_small_amounts() public {
         deal(address(aleph), contractAddress, 10); // Very small amount
 

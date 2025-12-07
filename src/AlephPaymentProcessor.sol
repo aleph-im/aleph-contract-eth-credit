@@ -33,6 +33,7 @@ error CannotWithdraw();
 error InvalidSwapConfig();
 error PathTooShort();
 error BurnFailed();
+error ZeroAmount();
 
 interface IBurnable {
     function burn(uint256 amount) external;
@@ -177,6 +178,9 @@ contract AlephPaymentProcessor is
         }
 
         uint128 amountIn = getAmountIn(_token, _amountIn);
+
+        // Prevent unnecessary processing of zero amounts
+        if (amountIn == 0) revert ZeroAmount();
 
         // Cache storage variables for gas optimization
         uint8 cachedDevelopersPercentage = developersPercentage;
