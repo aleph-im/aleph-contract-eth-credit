@@ -163,9 +163,6 @@ contract AlephPaymentProcessor is
         nonReentrant
     {
         if (_ttl < 60 || _ttl > 3600) revert TtlOutOfRange();
-        if (_token != address(aleph) && aleph.balanceOf(address(this)) > 0) {
-            revert PendingBalance();
-        }
         if (_token != address(aleph) && swapConfig[_token].v == 0) {
             revert NotConfigured();
         }

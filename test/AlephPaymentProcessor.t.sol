@@ -204,12 +204,18 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.process(address(0), 0, 1_000 * 10 ** 18, 60);
     }
 
-    function test_error_clean_aleph() public {
+    function test_process_with_existing_aleph_balance() public {
+        // Give contract some existing ALEPH (simulating dust or previous incomplete processing)
         deal(address(aleph), contractAddress, 1_000);
+        uint256 initialAlephBalance = aleph.balanceOf(contractAddress);
 
         vm.deal(contractAddress, 1 ether);
-        vm.expectRevert(abi.encodeWithSignature("PendingBalance()"));
+
+        // Should now succeed and process normally (no longer reverts)
         alephPaymentProcessor.process(address(0), 0.2 ether, 0, 60);
+
+        // Verify the existing ALEPH balance is untouched
+        vm.assertEq(aleph.balanceOf(contractAddress), initialAlephBalance);
     }
 
     function test_error_insufficient_ETH_balance() public {
@@ -990,13 +996,18 @@ contract AlephPaymentProcessorTest is Test {
         );
     }
 
-    function test_process_pending_aleph_validation_error() public {
-        // Test the error branch in process validation (line 129, BRDA:129,6,1)
-        deal(address(aleph), contractAddress, 1000); // Give contract some aleph
-        vm.deal(contractAddress, 1000); // Give contract some ETH
+    function test_process_eth_with_pending_aleph_succeeds() public {
+        // Give contract some existing ALEPH and ETH
+        deal(address(aleph), contractAddress, 1000);
+        vm.deal(contractAddress, 1000);
 
-        vm.expectRevert(abi.encodeWithSignature("PendingBalance()"));
-        alephPaymentProcessor.process(address(0), 500, 0, 60); // Try to process ETH while aleph balance exists
+        uint256 initialAlephBalance = aleph.balanceOf(contractAddress);
+
+        // Should now succeed (no longer reverts due to existing ALEPH)
+        alephPaymentProcessor.process(address(0), 500, 0, 60);
+
+        // Verify the existing ALEPH balance is preserved
+        vm.assertEq(aleph.balanceOf(contractAddress), initialAlephBalance);
     }
 
     function test_stable_token_non_aleph_branch() public {
@@ -1602,16 +1613,20 @@ contract AlephPaymentProcessorTest is Test {
     }
 
     function test_process_pending_aleph_validation_branch() public {
-        // Target pending aleph validation branch (line 106, BRDA:106,6,1)
+        // Test processing different token with existing ALEPH balance (should now succeed)
 
         // First process some aleph to leave balance
         deal(address(aleph), contractAddress, 1000);
         alephPaymentProcessor.process(address(aleph), 500, 0, 60); // Leaves 500 aleph
 
-        // Now try to process different token - should fail
+        uint256 remainingAlephBalance = aleph.balanceOf(contractAddress);
+
+        // Now try to process different token - should succeed
         deal(address(usdc), contractAddress, 1000);
-        vm.expectRevert(abi.encodeWithSignature("PendingBalance()"));
         alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+
+        // Verify the remaining ALEPH balance is untouched
+        vm.assertEq(aleph.balanceOf(contractAddress), remainingAlephBalance);
     }
 
     function test_stable_token_eth_transfer_branch_conditions() public {
