@@ -9,6 +9,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {UniversalRouter} from "@uniswap/universal-router/contracts/UniversalRouter.sol";
 import {IPermit2} from "@uniswap/permit2/src/interfaces/IPermit2.sol";
 import {PathKey} from "@uniswap/v4-periphery/src/libraries/PathKey.sol";
@@ -31,6 +32,11 @@ error InsufficientOutput();
 error CannotWithdraw();
 error InvalidSwapConfig();
 error PathTooShort();
+error BurnFailed();
+
+interface IBurnable {
+    function burn(uint256 amount) external;
+}
 
 /**
  * @title AlephPaymentProcessor
@@ -195,7 +201,7 @@ contract AlephPaymentProcessor is
             uint256 alephBurnAmount = swapAmount > 0 ? (alephReceived * burnAmount) / swapAmount : 0;
             uint256 alephDistributionAmount = alephReceived - alephBurnAmount;
 
-            aleph.safeTransfer(address(0), alephBurnAmount);
+            _burnTokens(alephBurnAmount);
 
             aleph.safeTransfer(cachedDistributionRecipient, alephDistributionAmount);
 
@@ -222,7 +228,7 @@ contract AlephPaymentProcessor is
 
             aleph.safeTransfer(cachedDevelopersRecipient, alephDevelopersAmount);
 
-            aleph.safeTransfer(address(0), alephBurnAmount);
+            _burnTokens(alephBurnAmount);
 
             aleph.safeTransfer(cachedDistributionRecipient, alephDistributionAmount);
 
@@ -533,5 +539,31 @@ contract AlephPaymentProcessor is
         amountOut = AlephSwapLibrary.swapV4(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
         emit SwapExecuted(_token, _amountIn, amountOut, 4, block.timestamp);
         return amountOut;
+    }
+
+    /**
+     * @dev Safely burns ALEPH tokens using the most appropriate method
+     * @param _amount Amount of ALEPH tokens to burn
+     */
+    function _burnTokens(uint256 _amount) internal {
+        if (_amount == 0) return;
+
+        // Method 1: Try burn() function if the token supports it
+        try IBurnable(address(aleph)).burn(_amount) {
+            return;
+        } catch {
+            // Method 2: Try transfer to address(0)
+            try aleph.transfer(address(0), _amount) {
+                return;
+            } catch {
+                // Method 3: Transfer to dead address as last resort
+                try aleph.transfer(0x000000000000000000000000000000000000dEaD, _amount) {
+                    return;
+                } catch {
+                    // If all methods fail, revert
+                    revert BurnFailed();
+                }
+            }
+        }
     }
 }
