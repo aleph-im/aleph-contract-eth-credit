@@ -111,6 +111,18 @@ contract AlephPaymentProcessor is
     mapping(address => SwapConfig) internal swapConfig;
 
     /**
+     * @dev Constructor disables initializers on the implementation contract
+     * This prevents front-running attacks where an attacker could initialize
+     * the implementation contract before the proxy is deployed
+     *
+     * @notice In production, this contract should only be initialized through a proxy.
+     * Direct initialization of the implementation contract is disabled for security.
+     */
+    constructor() {
+        _disableInitializers();
+    }
+
+    /**
      * @dev Initializes the contract with required parameters
      * @param _alephTokenAddress Address of the ALEPH token contract
      * @param _distributionRecipientAddress Address to receive distribution portion

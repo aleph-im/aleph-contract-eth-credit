@@ -9,6 +9,7 @@ import {PathKey} from "@uniswap/v4-periphery/src/libraries/PathKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPermit2} from "@uniswap/permit2/src/interfaces/IPermit2.sol";
 import {Test} from "forge-std/Test.sol";
+import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {SwapConfig} from "../src/AlephSwapLibrary.sol";
 import {AlephPaymentProcessor} from "../src/AlephPaymentProcessor.sol";
@@ -34,19 +35,32 @@ contract AlephPaymentProcessorTest is Test {
     receive() external payable {}
 
     function setUp() public {
-        alephPaymentProcessor = new AlephPaymentProcessor();
-        contractAddress = address(alephPaymentProcessor);
+        // Deploy AlephPaymentProcessor through ERC1967Proxy to bypass initialization protection
+        // This avoids the OpenZeppelin upgrades validation that fails due to our security constructor
 
-        alephPaymentProcessor.initialize(
-            alephTokenAddress,
-            distributionRecipientAddress,
-            developersRecipientAddress,
-            burnPercentage,
-            developersPercentage,
-            uniswapRouterAddress,
-            permit2Address,
-            wethAddress
+        // Deploy the implementation
+        AlephPaymentProcessor implementation = new AlephPaymentProcessor();
+
+        // Deploy proxy with initialization call
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(implementation),
+            abi.encodeCall(
+                AlephPaymentProcessor.initialize,
+                (
+                    alephTokenAddress,
+                    distributionRecipientAddress,
+                    developersRecipientAddress,
+                    burnPercentage,
+                    developersPercentage,
+                    uniswapRouterAddress,
+                    permit2Address,
+                    wethAddress
+                )
+            )
         );
+
+        contractAddress = address(proxy);
+        alephPaymentProcessor = AlephPaymentProcessor(payable(contractAddress));
 
         // Set token swap config
         // Init ETH/aleph PoolKey for uniswap v4 (0x8e1ff09f103511aca5fa8a007e691ed18a2982b37749e8c8bdf914eacdff3a21)
@@ -72,6 +86,25 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.setSwapConfigV4(usdcTokenAddress, usdcPath);
 
         alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
+    }
+
+    /**
+     * @dev Helper function to deploy AlephPaymentProcessor through proxy
+     * @param initData Initialization data for the proxy (empty bytes for uninitialized)
+     * @return Deployed AlephPaymentProcessor proxy instance
+     */
+    function deployProcessor(bytes memory initData) internal returns (AlephPaymentProcessor) {
+        AlephPaymentProcessor implementation = new AlephPaymentProcessor();
+        ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
+        return AlephPaymentProcessor(payable(address(proxy)));
+    }
+
+    /**
+     * @dev Helper function to deploy uninitialized AlephPaymentProcessor through proxy
+     * @return Deployed uninitialized AlephPaymentProcessor proxy instance
+     */
+    function deployProcessor() internal returns (AlephPaymentProcessor) {
+        return deployProcessor("");
     }
 
     function testFuzz_set_burn_percentage(uint8 x) public {
@@ -997,7 +1030,7 @@ contract AlephPaymentProcessorTest is Test {
 
     function test_initialize_error_branches() public {
         // Test each require condition in initialize to hit error branches
-        AlephPaymentProcessor newProcessor = new AlephPaymentProcessor();
+        AlephPaymentProcessor newProcessor = deployProcessor();
 
         // Test invalid token address branch (line 87, BRDA:87,0,0)
         vm.expectRevert(abi.encodeWithSignature("InvalidAddress()"));
@@ -1415,7 +1448,7 @@ contract AlephPaymentProcessorTest is Test {
 
     function test_initialize_invalid_burn_percentage() public {
         // Target line 87 branches (BRDA:87,0,0 and BRDA:87,0,1)
-        AlephPaymentProcessor newProcessor = new AlephPaymentProcessor();
+        AlephPaymentProcessor newProcessor = deployProcessor();
 
         vm.expectRevert(abi.encodeWithSignature("InvalidPercentage()"));
         newProcessor.initialize(
@@ -1432,7 +1465,7 @@ contract AlephPaymentProcessorTest is Test {
 
     function test_initialize_invalid_developers_percentage() public {
         // Target line 88 branches (BRDA:88,1,0 and BRDA:88,1,1)
-        AlephPaymentProcessor newProcessor = new AlephPaymentProcessor();
+        AlephPaymentProcessor newProcessor = deployProcessor();
 
         vm.expectRevert(abi.encodeWithSignature("InvalidPercentage()"));
         newProcessor.initialize(
@@ -1449,7 +1482,7 @@ contract AlephPaymentProcessorTest is Test {
 
     function test_initialize_total_percentages_exceed() public {
         // Target line 88 branches for total percentage validation
-        AlephPaymentProcessor newProcessor = new AlephPaymentProcessor();
+        AlephPaymentProcessor newProcessor = deployProcessor();
 
         vm.expectRevert(abi.encodeWithSignature("ExceedsTotal()"));
         newProcessor.initialize(
@@ -1594,7 +1627,7 @@ contract AlephPaymentProcessorTest is Test {
 
     function test_initialize_zero_addresses() public {
         // Target initialize validation branches for zero addresses (lines 75-80)
-        AlephPaymentProcessor newProcessor = new AlephPaymentProcessor();
+        AlephPaymentProcessor newProcessor = deployProcessor();
 
         // Test zero aleph address (line 75, BRDA:75,0,0)
         vm.expectRevert(abi.encodeWithSignature("InvalidAddress()"));
@@ -1865,10 +1898,10 @@ contract AlephPaymentProcessorTest is Test {
         // Systematically test all validation require() branches
 
         // Test with different contract instances to hit initialize branches
-        AlephPaymentProcessor processor1 = new AlephPaymentProcessor();
-        AlephPaymentProcessor processor2 = new AlephPaymentProcessor();
-        AlephPaymentProcessor processor3 = new AlephPaymentProcessor();
-        AlephPaymentProcessor processor4 = new AlephPaymentProcessor();
+        AlephPaymentProcessor processor1 = deployProcessor();
+        AlephPaymentProcessor processor2 = deployProcessor();
+        AlephPaymentProcessor processor3 = deployProcessor();
+        AlephPaymentProcessor processor4 = deployProcessor();
 
         // Each test hits a different validation branch
         vm.expectRevert(abi.encodeWithSignature("InvalidAddress()"));
