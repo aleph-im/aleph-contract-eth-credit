@@ -134,7 +134,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(aleph.balanceOf(developersRecipientAddress), 0);
         uint256 burnedBefore = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(0), 0.2 ether, 0, 60);
+        alephPaymentProcessor.process(address(0), 0.2 ether, 1, 60);
 
         vm.assertEq(contractAddress.balance, 0.8 ether);
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), 0);
@@ -153,7 +153,7 @@ contract AlephPaymentProcessorTest is Test {
 
         uint256 burnedBefore = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(usdc), 200, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 200, 1, 60);
 
         vm.assertEq(usdc.balanceOf(contractAddress), 800);
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), 0);
@@ -188,7 +188,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(aleph.balanceOf(distributionRecipientAddress), 0);
         uint256 burnedBefore = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(0), 0, 0, 60);
+        alephPaymentProcessor.process(address(0), 0, 1, 60);
 
         vm.assertEq(contractAddress.balance, 0 ether);
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), 0);
@@ -212,7 +212,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.deal(contractAddress, 1 ether);
 
         // Should now succeed and process normally (no longer reverts)
-        alephPaymentProcessor.process(address(0), 0.2 ether, 0, 60);
+        alephPaymentProcessor.process(address(0), 0.2 ether, 1, 60);
 
         // Verify the existing ALEPH balance is untouched
         vm.assertEq(aleph.balanceOf(contractAddress), initialAlephBalance);
@@ -222,7 +222,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.deal(contractAddress, 1_000);
 
         vm.expectRevert(abi.encodeWithSignature("InsufficientBalance()"));
-        alephPaymentProcessor.process(address(0), 1_001, 0, 60);
+        alephPaymentProcessor.process(address(0), 1_001, 1, 60);
     }
 
     function test_error_insufficient_TOKEN_balance() public {
@@ -334,7 +334,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 initialDevelopersUsdcBalance = usdc.balanceOf(developersRecipientAddress);
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Developers should receive 5% in usdc directly (50 usdc)
         vm.assertEq(usdc.balanceOf(developersRecipientAddress) - initialDevelopersUsdcBalance, 50);
@@ -356,7 +356,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 initialDevelopersBalance = aleph.balanceOf(developersRecipientAddress);
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(0), 1000, 0, 60);
+        alephPaymentProcessor.process(address(0), 1000, 1, 60);
 
         // All amounts should be in aleph after swap, distributed according to percentages
         uint256 distributionReceived = aleph.balanceOf(distributionRecipientAddress) - initialDistributionBalance;
@@ -412,7 +412,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.deal(contractAddress, 0);
 
         vm.expectRevert(abi.encodeWithSignature("ZeroAmount()"));
-        alephPaymentProcessor.process(address(0), 0, 0, 60);
+        alephPaymentProcessor.process(address(0), 0, 1, 60);
     }
 
     function test_zero_amount_usdc_and_zero_balance() public {
@@ -420,7 +420,7 @@ contract AlephPaymentProcessorTest is Test {
         deal(address(usdc), contractAddress, 0);
 
         vm.expectRevert(abi.encodeWithSignature("ZeroAmount()"));
-        alephPaymentProcessor.process(address(usdc), 0, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 0, 1, 60);
     }
 
     function test_edge_case_small_amounts() public {
@@ -528,7 +528,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 initialDistributionBalance = aleph.balanceOf(distributionRecipientAddress);
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(0), 1000, 0, 60);
+        alephPaymentProcessor.process(address(0), 1000, 1, 60);
 
         // Developers should receive 5% in ETH directly (50 wei)
         vm.assertEq(address(developersRecipientAddress).balance - initialDevelopersBalance, 50);
@@ -803,7 +803,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 initialDistributionBalance = aleph.balanceOf(distributionRecipientAddress);
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(0), 1000, 0, 60);
+        alephPaymentProcessor.process(address(0), 1000, 1, 60);
 
         // Developers should receive 5% in ETH directly (50 wei)
         vm.assertEq(developersRecipientAddress.balance - initialDevelopersEthBalance, 50);
@@ -823,7 +823,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 initialDistributionBalance = aleph.balanceOf(distributionRecipientAddress);
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Developers should receive 5% in usdc directly (50 usdc)
         vm.assertEq(usdc.balanceOf(developersRecipientAddress) - initialDevelopersUsdcBalance, 50);
@@ -841,7 +841,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 initialDevelopersBalance = aleph.balanceOf(developersRecipientAddress);
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(0), 1000, 0, 60);
+        alephPaymentProcessor.process(address(0), 1000, 1, 60);
 
         // All recipients should receive aleph (after swap)
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), initialDistributionBalance);
@@ -897,7 +897,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.deal(contractAddress, 1000);
 
         // This tests the ETH balance path in getAmountIn
-        alephPaymentProcessor.process(address(0), 500, 0, 60);
+        alephPaymentProcessor.process(address(0), 500, 1, 60);
 
         vm.assertEq(contractAddress.balance, 500); // Should have 500 ETH remaining
     }
@@ -958,7 +958,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.deal(contractAddress, 1 ether);
 
         // This will trigger the ETH swap branch in swapV4
-        alephPaymentProcessor.process(address(0), 0.1 ether, 0, 60);
+        alephPaymentProcessor.process(address(0), 0.1 ether, 1, 60);
 
         vm.assertEq(contractAddress.balance, 0.9 ether);
     }
@@ -968,7 +968,7 @@ contract AlephPaymentProcessorTest is Test {
         deal(address(usdc), contractAddress, 1000);
 
         // This will trigger the ERC20 swap branch in swapV4
-        alephPaymentProcessor.process(address(usdc), 200, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 200, 1, 60);
 
         vm.assertEq(usdc.balanceOf(contractAddress), 800);
     }
@@ -990,7 +990,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(aleph.balanceOf(contractAddress), 0);
 
         // This should pass because aleph balance is 0
-        alephPaymentProcessor.process(address(0), 500, 0, 60);
+        alephPaymentProcessor.process(address(0), 500, 1, 60);
 
         vm.assertEq(contractAddress.balance, 500);
     }
@@ -1086,7 +1086,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 initialAlephBalance = aleph.balanceOf(contractAddress);
 
         // Should now succeed (no longer reverts due to existing ALEPH)
-        alephPaymentProcessor.process(address(0), 500, 0, 60);
+        alephPaymentProcessor.process(address(0), 500, 1, 60);
 
         // Verify the existing ALEPH balance is preserved
         vm.assertEq(aleph.balanceOf(contractAddress), initialAlephBalance);
@@ -1099,7 +1099,7 @@ contract AlephPaymentProcessorTest is Test {
 
         uint256 initialDevelopersBalance = usdc.balanceOf(developersRecipientAddress);
 
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Should give developers 5% in usdc directly
         vm.assertGt(usdc.balanceOf(developersRecipientAddress), initialDevelopersBalance);
@@ -1112,7 +1112,7 @@ contract AlephPaymentProcessorTest is Test {
 
         uint256 initialDevelopersEthBalance = developersRecipientAddress.balance;
 
-        alephPaymentProcessor.process(address(0), 1000, 0, 60);
+        alephPaymentProcessor.process(address(0), 1000, 1, 60);
 
         // Should give developers 5% in ETH directly
         vm.assertGt(developersRecipientAddress.balance, initialDevelopersEthBalance);
@@ -1125,7 +1125,7 @@ contract AlephPaymentProcessorTest is Test {
 
         uint256 initialDevelopersBalance = usdc.balanceOf(developersRecipientAddress);
 
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Should give developers 5% in usdc directly
         vm.assertEq(usdc.balanceOf(developersRecipientAddress) - initialDevelopersBalance, 50);
@@ -1138,7 +1138,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Mock a scenario where ETH transfer could fail
         // This is hard to test directly, but we can test the branch is there
-        alephPaymentProcessor.process(address(0), 1000, 0, 60);
+        alephPaymentProcessor.process(address(0), 1000, 1, 60);
 
         // If we get here, the transfer succeeded
         vm.assertGt(developersRecipientAddress.balance, 0);
@@ -1151,7 +1151,7 @@ contract AlephPaymentProcessorTest is Test {
 
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(usdc), 100, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 100, 1, 60);
 
         // Should have swapped and burned some aleph
         vm.assertGt(aleph.balanceOf(address(0)), initialBurnBalance);
@@ -1209,7 +1209,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.deal(contractAddress, 100);
 
         vm.expectRevert(abi.encodeWithSignature("InsufficientBalance()"));
-        alephPaymentProcessor.process(address(0), 200, 0, 60); // Try to process more than available
+        alephPaymentProcessor.process(address(0), 200, 1, 60); // Try to process more than available
     }
 
     function test_setBurnPercentage_validation_branches() public {
@@ -1256,13 +1256,13 @@ contract AlephPaymentProcessorTest is Test {
         vm.deal(contractAddress, 1000);
 
         vm.expectRevert(abi.encodeWithSignature("NotConfigured()"));
-        alephPaymentProcessor.process(address(0), 500, 0, 60);
+        alephPaymentProcessor.process(address(0), 500, 1, 60);
     }
 
     function test_swapV4_eth_vs_erc20_branches() public {
         // Test ETH swap branch (line 434, BRDA:434,29,0)
         vm.deal(contractAddress, 1 ether);
-        alephPaymentProcessor.process(address(0), 0.1 ether, 0, 60);
+        alephPaymentProcessor.process(address(0), 0.1 ether, 1, 60);
         vm.assertEq(contractAddress.balance, 0.9 ether);
 
         // Test ERC20 swap branch (line 434, BRDA:434,29,1) is harder to test
@@ -1287,7 +1287,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
         uint256 initialDevelopersEthBalance = developersRecipientAddress.balance;
 
-        alephPaymentProcessor.process(address(0), 1000, 0, 60);
+        alephPaymentProcessor.process(address(0), 1000, 1, 60);
 
         // Developers should get 0 ETH (0% of 1000)
         vm.assertEq(developersRecipientAddress.balance, initialDevelopersEthBalance);
@@ -1306,7 +1306,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
         uint256 initialDevelopersUsdcBalance = usdc.balanceOf(developersRecipientAddress);
 
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Developers should get 0 usdc (0% of 1000)
         vm.assertEq(usdc.balanceOf(developersRecipientAddress), initialDevelopersUsdcBalance);
@@ -1342,7 +1342,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // This should revert because swapAmount would be 0
         vm.expectRevert(); // Expecting SwapAmountCannotBeZero()
-        alephPaymentProcessor.process(address(0), 100, 0, 60);
+        alephPaymentProcessor.process(address(0), 100, 1, 60);
     }
 
     function test_withdraw_token_vs_aleph_validation() public {
@@ -1369,7 +1369,7 @@ contract AlephPaymentProcessorTest is Test {
         // Test ETH balance branch
         vm.deal(contractAddress, 1000);
         uint256 balance1 = contractAddress.balance;
-        alephPaymentProcessor.process(address(0), 500, 0, 60);
+        alephPaymentProcessor.process(address(0), 500, 1, 60);
         vm.assertEq(contractAddress.balance, balance1 - 500);
 
         // Test ERC20 balance branch
@@ -1487,7 +1487,7 @@ contract AlephPaymentProcessorTest is Test {
 
         uint256 initialDistribution = aleph.balanceOf(distributionRecipientAddress);
 
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Should swap usdc to aleph and distribute
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), initialDistribution);
@@ -1497,7 +1497,7 @@ contract AlephPaymentProcessorTest is Test {
         // Target ETH swap branch (line 434, BRDA:434,29,0)
         vm.deal(contractAddress, 1000);
 
-        alephPaymentProcessor.process(address(0), 1000, 0, 60);
+        alephPaymentProcessor.process(address(0), 1000, 1, 60);
 
         // Should swap ETH to aleph via V4
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), 0);
@@ -1507,7 +1507,7 @@ contract AlephPaymentProcessorTest is Test {
         // Target ERC20 swap branch (line 434, BRDA:434,29,1)
         deal(address(usdc), contractAddress, 1000);
 
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Should swap usdc to aleph via V4
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), 0);
@@ -1518,7 +1518,7 @@ contract AlephPaymentProcessorTest is Test {
         // This would need to be tested by manipulating tokenConfig version
         // But since we can't easily set invalid version, we test the existing path
         deal(address(usdc), contractAddress, 1000);
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), 0);
     }
@@ -1528,7 +1528,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.deal(contractAddress, 1000);
 
         uint256 balanceBefore = address(contractAddress).balance;
-        alephPaymentProcessor.process(address(0), 500, 0, 60);
+        alephPaymentProcessor.process(address(0), 500, 1, 60);
 
         // Should process 500 ETH, leaving 500
         vm.assertEq(address(contractAddress).balance, balanceBefore - 500);
@@ -1539,7 +1539,7 @@ contract AlephPaymentProcessorTest is Test {
         deal(address(usdc), contractAddress, 1000);
 
         uint256 balanceBefore = usdc.balanceOf(contractAddress);
-        alephPaymentProcessor.process(address(usdc), 500, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 500, 1, 60);
 
         // Should process 500 usdc
         vm.assertLt(usdc.balanceOf(contractAddress), balanceBefore);
@@ -1555,7 +1555,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // This should give all to developers directly, no swap
         vm.expectRevert(); // Should revert with SwapAmountCannotBeZero
-        alephPaymentProcessor.process(address(usdc), 100, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 100, 1, 60);
     }
 
     function test_stable_token_with_nonzero_swap_amount() public {
@@ -1569,7 +1569,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 initialDevelopers = usdc.balanceOf(developersRecipientAddress);
         uint256 initialDistribution = aleph.balanceOf(distributionRecipientAddress);
 
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Should give 20% usdc to developers, swap 80% to aleph for burn+distribution
         vm.assertEq(usdc.balanceOf(developersRecipientAddress), initialDevelopers + 200);
@@ -1584,7 +1584,7 @@ contract AlephPaymentProcessorTest is Test {
 
         uint256 initialDevelopers = usdc.balanceOf(developersRecipientAddress);
 
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Should transfer ERC20 to developers
         vm.assertGt(usdc.balanceOf(developersRecipientAddress), initialDevelopers);
@@ -1705,7 +1705,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Now try to process different token - should succeed
         deal(address(usdc), contractAddress, 1000);
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Verify the remaining ALEPH balance is untouched
         vm.assertEq(aleph.balanceOf(contractAddress), remainingAlephBalance);
@@ -1719,7 +1719,7 @@ contract AlephPaymentProcessorTest is Test {
         vm.deal(contractAddress, 100);
 
         // Normal case - should succeed
-        alephPaymentProcessor.process(address(0), 100, 0, 60);
+        alephPaymentProcessor.process(address(0), 100, 1, 60);
         vm.assertGt(developersRecipientAddress.balance, 0);
     }
 
@@ -1733,7 +1733,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // This should result in swapAmount = 0, which should trigger revert in Uniswap
         vm.expectRevert();
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
     }
 
     function test_proportional_aleph_calculation_zero_branch() public {
@@ -1746,7 +1746,7 @@ contract AlephPaymentProcessorTest is Test {
 
         uint256 initialDistribution = aleph.balanceOf(distributionRecipientAddress);
 
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Should have proportional distribution
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), initialDistribution);
@@ -1792,11 +1792,11 @@ contract AlephPaymentProcessorTest is Test {
 
         // Test with ETH balance (line 208, BRDA:208,20,0)
         vm.deal(contractAddress, 1000);
-        alephPaymentProcessor.process(address(0), 500, 0, 60);
+        alephPaymentProcessor.process(address(0), 500, 1, 60);
 
         // Test with ERC20 balance (line 208, BRDA:208,20,1)
         deal(address(usdc), contractAddress, 1000);
-        alephPaymentProcessor.process(address(usdc), 500, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 500, 1, 60);
 
         vm.assertLt(usdc.balanceOf(contractAddress), 1000);
     }
@@ -1808,11 +1808,11 @@ contract AlephPaymentProcessorTest is Test {
         deal(address(usdc), contractAddress, 1000);
 
         // First call will set allowance
-        alephPaymentProcessor.process(address(usdc), 500, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 500, 1, 60);
 
         // Second call should reuse existing allowance
         deal(address(usdc), contractAddress, 500);
-        alephPaymentProcessor.process(address(usdc), 500, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 500, 1, 60);
 
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), 0);
     }
@@ -1824,7 +1824,7 @@ contract AlephPaymentProcessorTest is Test {
         deal(address(usdc), contractAddress, 1000);
 
         uint256 initialDistribution = aleph.balanceOf(distributionRecipientAddress);
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
 
         // Should have swapped usdc to aleph
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), initialDistribution);
@@ -1838,7 +1838,7 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.setStableToken(address(0), true); // ETH as stable token
         vm.deal(contractAddress, 1000);
         uint256 initialDevBalance = developersRecipientAddress.balance;
-        alephPaymentProcessor.process(address(0), 1000, 0, 60);
+        alephPaymentProcessor.process(address(0), 1000, 1, 60);
         // This hits the _token != address(0) branch as false
         vm.assertGt(developersRecipientAddress.balance, initialDevBalance);
 
@@ -1857,7 +1857,7 @@ contract AlephPaymentProcessorTest is Test {
 
         deal(address(usdc), contractAddress, 1000);
         uint256 initialDist = aleph.balanceOf(distributionRecipientAddress);
-        alephPaymentProcessor.process(address(usdc), 1000, 0, 60);
+        alephPaymentProcessor.process(address(usdc), 1000, 1, 60);
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), initialDist);
     }
 
@@ -2135,7 +2135,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute swap
         uint256 amountToSwap = 0.5 ether;
-        alephPaymentProcessor.process(wethTokenAddress, uint128(amountToSwap), 0, 60);
+        alephPaymentProcessor.process(wethTokenAddress, uint128(amountToSwap), 1, 60);
 
         // Verify WETH was consumed
         uint256 wethBalanceAfter = weth.balanceOf(contractAddress);
@@ -2174,7 +2174,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute swap
         uint256 amountToSwap = 1000 * 1e18; // 1000 DAI
-        alephPaymentProcessor.process(daiTokenAddress, uint128(amountToSwap), 0, 60);
+        alephPaymentProcessor.process(daiTokenAddress, uint128(amountToSwap), 1, 60);
 
         // Verify DAI was consumed
         uint256 daiBalanceAfter = dai.balanceOf(contractAddress);
@@ -2205,7 +2205,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute swap
         uint256 amountToSwap = 1 ether;
-        alephPaymentProcessor.process(address(0), uint128(amountToSwap), 0, 60);
+        alephPaymentProcessor.process(address(0), uint128(amountToSwap), 1, 60);
 
         // Verify ETH was consumed
         uint256 ethBalanceAfter = contractAddress.balance;
@@ -2241,7 +2241,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute swap
         uint256 amountToSwap = 1000 * 1e6; // 1000 USDC
-        alephPaymentProcessor.process(usdcTokenAddress, uint128(amountToSwap), 0, 60);
+        alephPaymentProcessor.process(usdcTokenAddress, uint128(amountToSwap), 1, 60);
 
         // Verify USDC was consumed
         uint256 usdcBalanceAfter = usdc.balanceOf(contractAddress);
@@ -2281,7 +2281,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute swap
         uint256 amountToSwap = 0.8 ether;
-        alephPaymentProcessor.process(wethTokenAddress, uint128(amountToSwap), 0, 60);
+        alephPaymentProcessor.process(wethTokenAddress, uint128(amountToSwap), 1, 60);
 
         // Verify WETH was consumed
         uint256 wethBalanceAfter = weth.balanceOf(contractAddress);
@@ -2323,7 +2323,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute swap
         uint256 amountToSwap = 100 * 1e18; // 100 UNI
-        alephPaymentProcessor.process(uniTokenAddress, uint128(amountToSwap), 0, 60);
+        alephPaymentProcessor.process(uniTokenAddress, uint128(amountToSwap), 1, 60);
 
         // Verify UNI was consumed
         uint256 uniBalanceAfter = uni.balanceOf(contractAddress);
@@ -2355,7 +2355,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute swap
         uint256 amountToSwap = 2 ether;
-        alephPaymentProcessor.process(address(0), uint128(amountToSwap), 0, 60);
+        alephPaymentProcessor.process(address(0), uint128(amountToSwap), 1, 60);
 
         // Verify ETH was consumed
         uint256 ethBalanceAfter = contractAddress.balance;
@@ -2395,7 +2395,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute swap
         uint256 amountToSwap = 5000 * 1e6; // 5000 USDC
-        alephPaymentProcessor.process(usdcTokenAddress, uint128(amountToSwap), 0, 60);
+        alephPaymentProcessor.process(usdcTokenAddress, uint128(amountToSwap), 1, 60);
 
         // Verify USDC was consumed
         uint256 usdcBalanceAfter = usdc.balanceOf(contractAddress);
@@ -2434,7 +2434,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute process with ETH
         uint256 amountToProcess = 2 ether;
-        alephPaymentProcessor.process(address(0), uint128(amountToProcess), 0, 60);
+        alephPaymentProcessor.process(address(0), uint128(amountToProcess), 1, 60);
 
         // Verify ETH was consumed
         uint256 ethBalanceAfter = contractAddress.balance;
@@ -2506,7 +2506,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute process with USDC
         uint256 amountToProcess = 5000 * 1e6; // 5000 USDC
-        alephPaymentProcessor.process(address(usdc), uint128(amountToProcess), 0, 60);
+        alephPaymentProcessor.process(address(usdc), uint128(amountToProcess), 1, 60);
 
         // Verify USDC was consumed
         uint256 usdcBalanceAfter = usdc.balanceOf(contractAddress);
@@ -2546,7 +2546,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute process with invalid token - should fail during swap
         vm.expectRevert(); // Expect the transaction to revert due to invalid token
-        alephPaymentProcessor.process(invalidTokenAddress, uint128(100 * 1e18), 0, 60);
+        alephPaymentProcessor.process(invalidTokenAddress, uint128(100 * 1e18), 1, 60);
 
         // Verify no ALEPH was distributed (since transaction reverted)
         uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
@@ -2574,7 +2574,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute process with invalid token - should fail during swap
         vm.expectRevert(); // Expect the transaction to revert due to invalid token
-        alephPaymentProcessor.process(invalidTokenAddress, uint128(100 * 1e18), 0, 60);
+        alephPaymentProcessor.process(invalidTokenAddress, uint128(100 * 1e18), 1, 60);
 
         // Verify no ALEPH was distributed (since transaction reverted)
         uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
@@ -2602,7 +2602,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Execute process with invalid token - should fail during swap
         vm.expectRevert(); // Expect the transaction to revert due to invalid token
-        alephPaymentProcessor.process(invalidTokenAddress, uint128(100 * 1e18), 0, 60);
+        alephPaymentProcessor.process(invalidTokenAddress, uint128(100 * 1e18), 1, 60);
 
         // Verify no ALEPH was distributed (since transaction reverted)
         uint256 alephDistributionAfter = aleph.balanceOf(distributionRecipientAddress);
@@ -2629,7 +2629,7 @@ contract AlephPaymentProcessorTest is Test {
         deal(wethTokenAddress, contractAddress, swapAmount);
         alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, v2);
         uint256 alephBefore = aleph.balanceOf(distributionRecipientAddress);
-        alephPaymentProcessor.process(wethTokenAddress, uint128(swapAmount), 0, 60);
+        alephPaymentProcessor.process(wethTokenAddress, uint128(swapAmount), 1, 60);
         uint256 alephAfterV2 = aleph.balanceOf(distributionRecipientAddress);
         uint256 alephReceivedV2 = alephAfterV2 - alephBefore;
 
@@ -2637,7 +2637,7 @@ contract AlephPaymentProcessorTest is Test {
         deal(wethTokenAddress, contractAddress, swapAmount);
         alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, v3);
         alephBefore = aleph.balanceOf(distributionRecipientAddress);
-        alephPaymentProcessor.process(wethTokenAddress, uint128(swapAmount), 0, 60);
+        alephPaymentProcessor.process(wethTokenAddress, uint128(swapAmount), 1, 60);
         uint256 alephAfterV3 = aleph.balanceOf(distributionRecipientAddress);
         uint256 alephReceivedV3 = alephAfterV3 - alephBefore;
 
@@ -2653,7 +2653,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Try to process token without configuration
         vm.expectRevert(abi.encodeWithSignature("NotConfigured()"));
-        alephPaymentProcessor.process(daiTokenAddress, 100 ether, 0, 60);
+        alephPaymentProcessor.process(daiTokenAddress, 100 ether, 1, 60);
     }
 
     function test_direct_universal_router_v2_call() public {
@@ -2785,7 +2785,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Try zero amount swap - this actually processes the entire balance (expected behavior)
         // Main goal is to verify it doesn't revert
-        alephPaymentProcessor.process(wethTokenAddress, 0, 0, 60);
+        alephPaymentProcessor.process(wethTokenAddress, 0, 1, 60);
     }
 
     function test_V2_native_ETH_to_ALEPH_swap() public {
@@ -2801,7 +2801,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 ethBalanceBefore = contractAddress.balance;
 
         // Process native ETH - should wrap ETH to WETH then swap to ALEPH
-        alephPaymentProcessor.process(address(0), 0.5 ether, 0, 60);
+        alephPaymentProcessor.process(address(0), 0.5 ether, 1, 60);
 
         uint256 ethBalanceAfter = contractAddress.balance;
 
@@ -2824,7 +2824,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Should fail due to insufficient liquidity, but path validation should work
         vm.expectRevert();
-        alephPaymentProcessor.process(wethTokenAddress, maxAmount, 0, 60);
+        alephPaymentProcessor.process(wethTokenAddress, maxAmount, 1, 60);
     }
 
     function test_V2_permit2_expiration_edge_case() public {
@@ -2909,7 +2909,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Should fail during swap due to non-existent pool
         vm.expectRevert();
-        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 60);
+        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 1, 60);
     }
 
     function test_V3_extremely_long_path() public {
@@ -2967,7 +2967,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Should fail due to invalid path structure
         vm.expectRevert();
-        alephPaymentProcessor.process(address(0), 0.1 ether, 0, 60);
+        alephPaymentProcessor.process(address(0), 0.1 ether, 1, 60);
     }
 
     function test_V3_zero_amount_swap() public {
@@ -2981,7 +2981,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Try zero amount swap - this actually processes the entire balance (expected behavior)
         // Main goal is to verify it doesn't revert
-        alephPaymentProcessor.process(wethTokenAddress, 0, 0, 60);
+        alephPaymentProcessor.process(wethTokenAddress, 0, 1, 60);
     }
 
     function test_V3_native_ETH_to_ALEPH_swap() public {
@@ -2999,7 +2999,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 ethBalanceBefore = contractAddress.balance;
 
         // Process native ETH - should wrap ETH to WETH then swap to ALEPH using V3
-        alephPaymentProcessor.process(address(0), 0.3 ether, 0, 60);
+        alephPaymentProcessor.process(address(0), 0.3 ether, 1, 60);
 
         uint256 ethBalanceAfter = contractAddress.balance;
 
@@ -3033,7 +3033,7 @@ contract AlephPaymentProcessorTest is Test {
         uint256 initialEth = contractAddress.balance;
 
         // Process ETH - should trigger wrapping and swapping
-        alephPaymentProcessor.process(address(0), 0.2 ether, 0, 60);
+        alephPaymentProcessor.process(address(0), 0.2 ether, 1, 60);
 
         // Verify ETH was consumed and process completed successfully
         assertEq(contractAddress.balance, initialEth - 0.2 ether);
@@ -3055,7 +3055,7 @@ contract AlephPaymentProcessorTest is Test {
         // Deadline is calculated as block.timestamp + TTL at execution time
         // So even if we warp forward, a reasonable TTL will still be valid
         // Main goal is to verify it doesn't revert
-        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 60);
+        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 1, 60);
     }
 
     function test_universal_router_v2_insufficient_output_amount() public {
@@ -3162,7 +3162,7 @@ contract AlephPaymentProcessorTest is Test {
 
         // Try zero amount ETH swap - this actually processes the entire balance (expected behavior)
         // Main goal is to verify it doesn't revert
-        alephPaymentProcessor.process(address(0), 0, 0, 60);
+        alephPaymentProcessor.process(address(0), 0, 1, 60);
     }
 
     function test_v2_v3_version_consistency() public {
@@ -3200,6 +3200,6 @@ contract AlephPaymentProcessorTest is Test {
         vm.deal(contractAddress, 1 ether);
 
         // Should work - the replacement function should handle this properly
-        alephPaymentProcessor.process(address(0), 0.1 ether, 0, 60);
+        alephPaymentProcessor.process(address(0), 0.1 ether, 1, 60);
     }
 }

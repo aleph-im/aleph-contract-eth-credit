@@ -182,7 +182,7 @@ contract AlephPaymentProcessor is
             revert NotConfigured();
         }
 
-        uint128 amountIn = getAmountIn(_token, _amountIn);
+        uint128 amountIn = _getAmountIn(_token, _amountIn);
 
         // Prevent unnecessary processing of zero amounts
         if (amountIn == 0) revert ZeroAmount();
@@ -202,17 +202,17 @@ contract AlephPaymentProcessor is
 
         // Calculate portions from initial amount
         (uint256 developersAmount, uint256 burnAmount, uint256 distributionAmount) =
-            calculateProportions(uint256(amountIn), cachedDevelopersPercentage, cachedBurnPercentage);
+            _calculateProportions(uint256(amountIn), cachedDevelopersPercentage, cachedBurnPercentage);
 
         if (isStable && _token != alephAddress) {
             // For stable tokens: send developers portion directly, swap the rest
-            transferTokenOrEth(
+            _transferTokenOrEth(
                 _token, cachedDevelopersRecipient, developersAmount, "Transfer to developers recipient failed"
             );
 
             // Swap burn + distribution portions to ALEPH
             uint256 swapAmount = burnAmount + distributionAmount;
-            uint256 alephReceived = swapToken(_token, uint128(swapAmount), _amountOutMinimum, _ttl);
+            uint256 alephReceived = _swapToken(_token, uint128(swapAmount), _amountOutMinimum, _ttl);
 
             // Calculate proportional ALEPH amounts based on original percentages
             uint256 alephBurnAmount = swapAmount > 0 ? (alephReceived * burnAmount) / swapAmount : 0;
@@ -237,11 +237,11 @@ contract AlephPaymentProcessor is
         } else {
             // For non-stable tokens or ALEPH: swap entire amount, then distribute proportionally
             uint256 alephReceived =
-                _token != alephAddress ? swapToken(_token, amountIn, _amountOutMinimum, _ttl) : amountIn;
+                _token != alephAddress ? _swapToken(_token, amountIn, _amountOutMinimum, _ttl) : amountIn;
 
             // Calculate ALEPH amounts based on original input percentages
             (uint256 alephDevelopersAmount, uint256 alephBurnAmount, uint256 alephDistributionAmount) =
-                calculateProportions(alephReceived, cachedDevelopersPercentage, cachedBurnPercentage);
+                _calculateProportions(alephReceived, cachedDevelopersPercentage, cachedBurnPercentage);
 
             aleph.safeTransfer(cachedDevelopersRecipient, alephDevelopersAmount);
 
@@ -277,10 +277,10 @@ contract AlephPaymentProcessor is
         _validAddr(_to);
         if (_to == address(this)) revert InvalidAddress();
 
-        uint256 amount = getAmountIn(_token, _amount);
+        uint256 amount = _getAmountIn(_token, _amount);
         if (amount == 0) revert InsufficientBalance();
 
-        transferTokenOrEth(_token, _to, amount, "Transfer failed");
+        _transferTokenOrEth(_token, _to, amount, "Transfer failed");
 
         emit TokenWithdrawn(_token, _to, amount, block.timestamp);
     }
@@ -291,7 +291,7 @@ contract AlephPaymentProcessor is
      * @param _amountIn Requested amount (0 for full balance)
      * @return amountIn Actual amount to process
      */
-    function getAmountIn(address _token, uint128 _amountIn) internal view returns (uint128 amountIn) {
+    function _getAmountIn(address _token, uint128 _amountIn) internal view returns (uint128 amountIn) {
         uint256 balance = _token != address(0) ? IERC20(_token).balanceOf(address(this)) : address(this).balance;
 
         amountIn = _amountIn != 0 ? _amountIn : Math.min(balance, type(uint128).max).toUint128();
@@ -308,7 +308,7 @@ contract AlephPaymentProcessor is
      * @param _recipient Address to receive the transfer
      * @param _amount Amount to transfer
      */
-    function transferTokenOrEth(address _token, address _recipient, uint256 _amount, string memory) internal {
+    function _transferTokenOrEth(address _token, address _recipient, uint256 _amount, string memory) internal {
         if (_token != address(0)) {
             IERC20(_token).safeTransfer(_recipient, _amount);
         } else {
@@ -336,7 +336,7 @@ contract AlephPaymentProcessor is
      * @return burnAmount Amount to burn
      * @return distributionAmount Remaining amount for distribution
      */
-    function calculateProportions(uint256 _totalAmount, uint8 _developersPercentage, uint8 _burnPercentage)
+    function _calculateProportions(uint256 _totalAmount, uint8 _developersPercentage, uint8 _burnPercentage)
         internal
         pure
         returns (uint256 developersAmount, uint256 burnAmount, uint256 distributionAmount)
@@ -521,48 +521,26 @@ contract AlephPaymentProcessor is
      * @param _ttl Time to live for the swap
      * @return amountOut Amount of ALEPH tokens received
      */
-    function swapToken(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
+    function _swapToken(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
         internal
         returns (uint256 amountOut)
     {
         SwapConfig memory config = swapConfig[_token];
         uint8 v = config.v;
         if (v < 2 || v > 4) revert InvalidVersion();
+
         if (v == 2) {
-            return AlephSwapLibrary.swapV2(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+            amountOut = AlephSwapLibrary.swapV2(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+        } else if (v == 3) {
+            amountOut = AlephSwapLibrary.swapV3(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+        } else {
+            amountOut = AlephSwapLibrary.swapV4(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
         }
-        if (v == 3) {
-            return AlephSwapLibrary.swapV3(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
-        }
-        return AlephSwapLibrary.swapV4(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
-    }
 
-    function swapV2(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl, SwapConfig memory config)
-        internal
-        returns (uint256 amountOut)
-    {
-        amountOut = AlephSwapLibrary.swapV2(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
-        emit SwapExecuted(_token, _amountIn, amountOut, 2, block.timestamp);
+        emit SwapExecuted(_token, _amountIn, amountOut, v, block.timestamp);
         return amountOut;
     }
 
-    function swapV3(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl, SwapConfig memory config)
-        internal
-        returns (uint256 amountOut)
-    {
-        amountOut = AlephSwapLibrary.swapV3(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
-        emit SwapExecuted(_token, _amountIn, amountOut, 3, block.timestamp);
-        return amountOut;
-    }
-
-    function swapV4(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl, SwapConfig memory config)
-        internal
-        returns (uint256 amountOut)
-    {
-        amountOut = AlephSwapLibrary.swapV4(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
-        emit SwapExecuted(_token, _amountIn, amountOut, 4, block.timestamp);
-        return amountOut;
-    }
 
     /**
      * @dev Safely burns ALEPH tokens using the most appropriate method
