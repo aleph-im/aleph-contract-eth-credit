@@ -2,6 +2,7 @@
 pragma solidity ^0.8.13;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
@@ -49,6 +50,7 @@ interface IBurnable {
  */
 contract AlephPaymentProcessor is
     Initializable,
+    UUPSUpgradeable,
     Ownable2StepUpgradeable,
     AccessControlUpgradeable,
     ReentrancyGuardUpgradeable
@@ -155,6 +157,7 @@ contract AlephPaymentProcessor is
         __Ownable2Step_init();
         __AccessControl_init();
         __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
 
         adminRole = keccak256("ADMIN_ROLE");
 
@@ -578,5 +581,16 @@ contract AlephPaymentProcessor is
                 }
             }
         }
+    }
+
+    /**
+     * @dev Function to authorize contract upgrades
+     * @param newImplementation Address of the new implementation contract
+     * @notice Only the contract owner can authorize upgrades
+     * @notice This function is required for UUPS upgradeability pattern
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+        // Additional upgrade validation logic can be added here if needed
+        // For now, we only require owner authorization
     }
 }

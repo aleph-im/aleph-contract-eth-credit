@@ -9,6 +9,7 @@ import {PathKey} from "@uniswap/v4-periphery/src/libraries/PathKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPermit2} from "@uniswap/permit2/src/interfaces/IPermit2.sol";
 import {Test} from "forge-std/Test.sol";
+import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {SwapConfig} from "../src/AlephSwapLibrary.sol";
@@ -105,6 +106,21 @@ contract AlephPaymentProcessorTest is Test {
      */
     function deployProcessor() internal returns (AlephPaymentProcessor) {
         return deployProcessor("");
+    }
+
+    /**
+     * @dev Helper function to deploy AlephPaymentProcessor using UUPS upgrades tooling
+     * @param initData Initialization data for the proxy
+     * @return Deployed AlephPaymentProcessor UUPS proxy instance
+     * @notice This demonstrates proper UUPS deployment but may fail due to our security constructor
+     */
+    function deployProcessorUUPS(bytes memory initData) internal returns (AlephPaymentProcessor) {
+        // This would be the "proper" way to deploy UUPS but fails due to our security constructor
+        // address proxy = Upgrades.deployUUPSProxy("AlephPaymentProcessor.sol", initData);
+        // return AlephPaymentProcessor(payable(proxy));
+
+        // For now, we use our manual ERC1967Proxy approach which works with our security model
+        return deployProcessor(initData);
     }
 
     function testFuzz_set_burn_percentage(uint8 x) public {
