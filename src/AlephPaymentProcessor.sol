@@ -286,7 +286,16 @@ contract AlephPaymentProcessor is
      * @param _amount Amount to withdraw (0 for all available balance)
      */
     function withdraw(address _token, address payable _to, uint128 _amount) external onlyRole(adminRole) nonReentrant {
-        if (_token == address(aleph) || swapConfig[_token].v > 0) {
+        // Check if token is configured for swapping
+        bool isConfigured = swapConfig[_token].v > 0;
+
+        // For WETH, also check if ETH (address(0)) is configured, since WETH
+        // is used internally for ETH swaps but config is stored under address(0)
+        if (_token == wethAddress && swapConfig[address(0)].v > 0) {
+            isConfigured = true;
+        }
+
+        if (_token == address(aleph) || isConfigured) {
             revert CannotWithdraw();
         }
         _validAddr(_to);
