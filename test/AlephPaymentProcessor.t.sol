@@ -9,7 +9,6 @@ import {PathKey} from "@uniswap/v4-periphery/src/libraries/PathKey.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {IPermit2} from "@uniswap/permit2/src/interfaces/IPermit2.sol";
 import {Test} from "forge-std/Test.sol";
-import {Upgrades} from "openzeppelin-foundry-upgrades/Upgrades.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 import {SwapConfig} from "../src/AlephSwapLibrary.sol";
@@ -114,7 +113,7 @@ contract AlephPaymentProcessorTest is Test {
      * @return Deployed AlephPaymentProcessor UUPS proxy instance
      * @notice This demonstrates proper UUPS deployment but may fail due to our security constructor
      */
-    function deployProcessorUUPS(bytes memory initData) internal returns (AlephPaymentProcessor) {
+    function deployProcessorUups(bytes memory initData) internal returns (AlephPaymentProcessor) {
         // This would be the "proper" way to deploy UUPS but fails due to our security constructor
         // address proxy = Upgrades.deployUUPSProxy("AlephPaymentProcessor.sol", initData);
         // return AlephPaymentProcessor(payable(proxy));
