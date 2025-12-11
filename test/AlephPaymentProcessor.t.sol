@@ -3002,21 +3002,18 @@ contract AlephPaymentProcessorTest is Test {
     }
 
     function test_V3_address_replacement_multiple_zeros() public {
-        // Test path with multiple address(0) - edge case for replacement function
+        // Test path with multiple address(0) - should now fail during configuration
         bytes memory pathWithMultipleZeros = abi.encodePacked(
-            address(0), // Will be replaced
+            address(0), // First zero
             uint24(3000),
-            address(0), // Second zero - should remain (invalid but tests edge case)
+            address(0), // Second zero - creates duplicate, should be rejected
             uint24(10000),
             alephTokenAddress
         );
 
+        // Should fail during configuration due to duplicate tokens
+        vm.expectRevert(abi.encodeWithSignature("DuplicateTokens()"));
         alephPaymentProcessor.setSwapConfigV3(address(0), pathWithMultipleZeros);
-        vm.deal(contractAddress, 1 ether);
-
-        // Should fail due to invalid path structure
-        vm.expectRevert();
-        alephPaymentProcessor.process(address(0), 0.1 ether, 1, 60);
     }
 
     function test_V3_zero_amount_swap() public {

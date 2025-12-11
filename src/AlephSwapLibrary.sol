@@ -227,6 +227,13 @@ library AlephSwapLibrary {
         if (_v3Path.length < 43 || _v3Path.length > 200) revert InvalidPath();
         if (_v3Path.length % 23 != 20) revert InvalidPath();
 
+        // Verify path starts with correct token
+        address firstToken;
+        assembly {
+            firstToken := shr(96, calldataload(_v3Path.offset))
+        }
+        if (firstToken != _address && firstToken != address(0)) revert InvalidPath();
+
         // Verify path ends with ALEPH token
         address lastToken;
         assembly {
@@ -234,6 +241,9 @@ library AlephSwapLibrary {
             lastToken := shr(96, calldataload(pathEnd))
         }
         if (lastToken != _alephAddress) revert InvalidPath();
+
+        // Check for duplicate tokens in path
+        _checkV3PathForDuplicates(_v3Path);
 
         // Replace address(0) with WETH in the path during configuration
         processedPath = _replaceAddressZeroWithWethV3(_v3Path, _wethAddress);
@@ -248,11 +258,54 @@ library AlephSwapLibrary {
      */
     function validateV4Config(address _address, PathKey[] calldata _v4Path, address _alephAddress) internal pure {
         if (_address == _alephAddress) revert InvalidAddress();
-        if (_v4Path.length == 0 || _v4Path.length > 5) revert InvalidPath();
+        if (_v4Path.length < 1 || _v4Path.length > 5) revert InvalidPath();
+
+        // Note: For V4, the input token is implicit and not part of the PathKey array
+        // The PathKey array represents intermediate steps in the swap path
+        // No explicit validation of first token needed as it's handled by the swap logic
+
+        // Verify path ends with ALEPH token
         Currency alephCurrency = Currency.wrap(_alephAddress);
         Currency pathEndCurrency = _v4Path[_v4Path.length - 1].intermediateCurrency;
         if (Currency.unwrap(pathEndCurrency) != Currency.unwrap(alephCurrency)) {
             revert InvalidPath();
+        }
+
+        // Check for duplicate tokens in path
+        for (uint256 i = 1; i < _v4Path.length; i++) {
+            Currency currentCurrency = _v4Path[i].intermediateCurrency;
+            Currency previousCurrency = _v4Path[i - 1].intermediateCurrency;
+            if (Currency.unwrap(currentCurrency) == Currency.unwrap(previousCurrency)) {
+                revert DuplicateTokens();
+            }
+        }
+    }
+
+    /**
+     * @dev Helper function to check for duplicate tokens in V3 encoded path
+     */
+    function _checkV3PathForDuplicates(bytes calldata path) private pure {
+        if (path.length < 43) return; // Minimum path length for 2 tokens
+
+        uint256 numTokens = (path.length + 3) / 23; // Each hop is 23 bytes (20 + 3)
+
+        for (uint256 i = 0; i < numTokens - 1; i++) {
+            address currentToken;
+            address nextToken;
+
+            assembly {
+                // Current token at position i * 23
+                let currentPos := add(path.offset, mul(i, 23))
+                currentToken := shr(96, calldataload(currentPos))
+
+                // Next token at position (i + 1) * 23
+                let nextPos := add(path.offset, mul(add(i, 1), 23))
+                nextToken := shr(96, calldataload(nextPos))
+            }
+
+            if (currentToken == nextToken) {
+                revert DuplicateTokens();
+            }
         }
     }
 
