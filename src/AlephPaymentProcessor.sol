@@ -252,8 +252,9 @@ contract AlephPaymentProcessor is
             );
         } else {
             // For non-stable tokens or ALEPH: swap entire amount, then distribute proportionally
-            uint256 alephReceived =
-                _token != alephAddress ? _swapToken(_token, amountIn, _amountOutMinimum, _ttl, cachedSwapConfig) : amountIn;
+            uint256 alephReceived = _token != alephAddress
+                ? _swapToken(_token, amountIn, _amountOutMinimum, _ttl, cachedSwapConfig)
+                : amountIn;
 
             // Calculate ALEPH amounts based on original input percentages
             (uint256 alephDevelopersAmount, uint256 alephBurnAmount, uint256 alephDistributionAmount) =
@@ -547,26 +548,30 @@ contract AlephPaymentProcessor is
      * @param config Cached swap configuration to avoid redundant storage reads
      * @return amountOut Amount of ALEPH tokens received
      */
-    function _swapToken(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl, SwapConfig memory config)
-        internal
-        returns (uint256 amountOut)
-    {
+    function _swapToken(
+        address _token,
+        uint128 _amountIn,
+        uint128 _amountOutMinimum,
+        uint48 _ttl,
+        SwapConfig memory config
+    ) internal returns (uint256 amountOut) {
         uint8 v = config.v;
         if (v < 2 || v > 4) revert InvalidVersion();
 
         if (v == 2) {
-            amountOut = AlephSwapLibrary.swapV2(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+            amountOut =
+                AlephSwapLibrary.swapV2(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
         } else if (v == 3) {
-            amountOut = AlephSwapLibrary.swapV3(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+            amountOut =
+                AlephSwapLibrary.swapV3(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
         } else {
-            amountOut = AlephSwapLibrary.swapV4(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+            amountOut =
+                AlephSwapLibrary.swapV4(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
         }
 
         emit SwapExecuted(_token, _amountIn, amountOut, v, block.timestamp);
         return amountOut;
     }
-
-
 
     /**
      * @dev Safely burns ALEPH tokens using the most appropriate method

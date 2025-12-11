@@ -653,7 +653,6 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.removeAdmin(admin);
     }
 
-
     function test_withdraw_token_event() public {
         // Use a token that's not configured for swapping (DAI)
         address daiAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
