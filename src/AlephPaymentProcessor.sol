@@ -86,6 +86,7 @@ contract AlephPaymentProcessor is
     event TokenWithdrawn(address indexed token, address indexed to, uint256 amount, uint256 timestamp);
     event AdminAdded(address indexed admin, uint256 timestamp);
     event AdminRemoved(address indexed admin, uint256 timestamp);
+    event TokensBurned(uint256 amount, string method, uint256 timestamp);
 
     // Payment settings
     address public distributionRecipient; // Address that receives the distribution portion of payments
@@ -575,14 +576,17 @@ contract AlephPaymentProcessor is
 
         // Method 1: Try burn() function if the token supports it
         try IBurnable(address(aleph)).burn(_amount) {
+            emit TokensBurned(_amount, "burn_function", block.timestamp);
             return;
         } catch {
             // Method 2: Try transfer to address(0)
             try aleph.transfer(address(0), _amount) {
+                emit TokensBurned(_amount, "transfer_to_zero", block.timestamp);
                 return;
             } catch {
                 // Method 3: Transfer to dead address as last resort
                 try aleph.transfer(0x000000000000000000000000000000000000dEaD, _amount) {
+                    emit TokensBurned(_amount, "transfer_to_dead", block.timestamp);
                     return;
                 } catch {
                     // If all methods fail, revert
