@@ -228,7 +228,7 @@ contract AlephPaymentProcessor is
 
             // Swap burn + distribution portions to ALEPH
             uint256 swapAmount = burnAmount + distributionAmount;
-            uint256 alephReceived = _swapToken(_token, uint128(swapAmount), _amountOutMinimum, _ttl);
+            uint256 alephReceived = _swapToken(_token, uint128(swapAmount), _amountOutMinimum, _ttl, cachedSwapConfig);
 
             // Calculate proportional ALEPH amounts based on original percentages
             uint256 alephBurnAmount = swapAmount > 0 ? (alephReceived * burnAmount) / swapAmount : 0;
@@ -253,7 +253,7 @@ contract AlephPaymentProcessor is
         } else {
             // For non-stable tokens or ALEPH: swap entire amount, then distribute proportionally
             uint256 alephReceived =
-                _token != alephAddress ? _swapToken(_token, amountIn, _amountOutMinimum, _ttl) : amountIn;
+                _token != alephAddress ? _swapToken(_token, amountIn, _amountOutMinimum, _ttl, cachedSwapConfig) : amountIn;
 
             // Calculate ALEPH amounts based on original input percentages
             (uint256 alephDevelopersAmount, uint256 alephBurnAmount, uint256 alephDistributionAmount) =
@@ -544,13 +544,13 @@ contract AlephPaymentProcessor is
      * @param _amountIn Amount of input tokens
      * @param _amountOutMinimum Minimum output amount expected
      * @param _ttl Time to live for the swap
+     * @param config Cached swap configuration to avoid redundant storage reads
      * @return amountOut Amount of ALEPH tokens received
      */
-    function _swapToken(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
+    function _swapToken(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl, SwapConfig memory config)
         internal
         returns (uint256 amountOut)
     {
-        SwapConfig memory config = swapConfig[_token];
         uint8 v = config.v;
         if (v < 2 || v > 4) revert InvalidVersion();
 
@@ -565,6 +565,7 @@ contract AlephPaymentProcessor is
         emit SwapExecuted(_token, _amountIn, amountOut, v, block.timestamp);
         return amountOut;
     }
+
 
 
     /**
