@@ -37,7 +37,9 @@ contract BaseDeployScript is Script {
             )
         );
 
-        AlephPaymentProcessor alephPaymentProcessor = AlephPaymentProcessor(payable(proxy));
+        AlephPaymentProcessor alephPaymentProcessor = AlephPaymentProcessor(
+            payable(proxy)
+        );
 
         // Init ETH/ALEPH PoolKey for uniswap v4 (0x8e1ff09f103511aca5fa8a007e691ed18a2982b37749e8c8bdf914eacdff3a21)
         address ethTokenAddress = address(0); // 0x0000000000000000000000000000000000000000
@@ -105,8 +107,8 @@ contract DeployProductionScript is BaseDeployScript {
 
         address c2 = deploy(
             0x27702a26126e0B3702af63Ee09aC4d1A084EF628,
-            address(0),
-            address(0),
+            0x3a5cc6abd06b601f4654035d125f9dd2fc992c25,
+            0x52ca3b246d7768f708c37f23Eb005Fa5942e668C,
             0x66a9893cC07D91D95644AEDD05D03f95e1dBA8Af,
             0x000000000022D473030F116dDEE9F6B43aC78BA3,
             0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2,
