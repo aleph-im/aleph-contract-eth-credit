@@ -146,10 +146,7 @@ library AlephSwapLibrary {
         bytes[] memory params = new bytes[](3);
         params[0] = abi.encode(
             IV4Router.ExactInputParams({
-                currencyIn: currencyIn,
-                path: path,
-                amountIn: _amountIn,
-                amountOutMinimum: _amountOutMinimum
+                currencyIn: currencyIn, path: path, amountIn: _amountIn, amountOutMinimum: _amountOutMinimum
             })
         );
 

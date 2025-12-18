@@ -69,11 +69,7 @@ contract CreateUniswapV4PoolScript is Script {
         }
 
         return PoolKey({
-            currency0: currency0,
-            currency1: currency1,
-            fee: FEE,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(0))
+            currency0: currency0, currency1: currency1, fee: FEE, tickSpacing: TICK_SPACING, hooks: IHooks(address(0))
         });
     }
 
@@ -136,10 +132,7 @@ contract CreateUniswapV4PoolScript is Script {
         IERC20(token1).approve(address(LIQUIDITY_ROUTER), liquidity1);
 
         IPoolManager.ModifyLiquidityParams memory params = IPoolManager.ModifyLiquidityParams({
-            tickLower: MIN_TICK,
-            tickUpper: MAX_TICK,
-            liquidityDelta: int256(liquidity0 + liquidity1),
-            salt: bytes32(0)
+            tickLower: MIN_TICK, tickUpper: MAX_TICK, liquidityDelta: int256(liquidity0 + liquidity1), salt: bytes32(0)
         });
 
         try LIQUIDITY_ROUTER.modifyLiquidity(poolKey, params, new bytes(0)) {
