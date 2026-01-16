@@ -31,7 +31,6 @@ library AlephSwapLibrary {
     using SafeCast for uint256;
 
     function swapV2(
-        address _token,
         uint128 _amountIn,
         uint128 _amountOutMinimum,
         uint48 _ttl,
@@ -47,7 +46,7 @@ library AlephSwapLibrary {
         bytes memory commands;
         bytes[] memory inputs;
 
-        if (_token == address(0)) {
+        if (config.t == address(0)) {
             address[] memory ethPath = config.v2;
             commands = abi.encodePacked(uint8(Commands.WRAP_ETH), uint8(Commands.V2_SWAP_EXACT_IN));
             inputs = new bytes[](2);
@@ -56,16 +55,16 @@ library AlephSwapLibrary {
         } else {
             commands = abi.encodePacked(uint8(Commands.PERMIT2_TRANSFER_FROM), uint8(Commands.V2_SWAP_EXACT_IN));
             inputs = new bytes[](2);
-            inputs[0] = abi.encode(_token, address(router), uint256(_amountIn).toUint160());
+            inputs[0] = abi.encode(config.t, address(router), uint256(_amountIn).toUint160());
             inputs[1] = abi.encode(address(this), uint256(_amountIn), uint256(_amountOutMinimum), config.v2, false);
         }
 
         uint256 deadline = block.timestamp + _ttl;
 
-        if (_token == address(0)) {
+        if (config.t == address(0)) {
             router.execute{value: _amountIn}(commands, inputs, deadline);
         } else {
-            _approve(_token, _amountIn, _ttl, permit2, router);
+            _approve(config.t, _amountIn, _ttl, permit2, router);
             router.execute(commands, inputs, deadline);
         }
 
@@ -76,7 +75,6 @@ library AlephSwapLibrary {
     }
 
     function swapV3(
-        address _token,
         uint128 _amountIn,
         uint128 _amountOutMinimum,
         uint48 _ttl,
@@ -92,7 +90,7 @@ library AlephSwapLibrary {
         bytes memory commands;
         bytes[] memory inputs;
 
-        if (_token == address(0)) {
+        if (config.t == address(0)) {
             bytes memory ethV3Path = config.v3;
             commands = abi.encodePacked(uint8(Commands.WRAP_ETH), uint8(Commands.V3_SWAP_EXACT_IN));
             inputs = new bytes[](2);
@@ -101,16 +99,16 @@ library AlephSwapLibrary {
         } else {
             commands = abi.encodePacked(uint8(Commands.PERMIT2_TRANSFER_FROM), uint8(Commands.V3_SWAP_EXACT_IN));
             inputs = new bytes[](2);
-            inputs[0] = abi.encode(_token, address(router), uint256(_amountIn).toUint160());
+            inputs[0] = abi.encode(config.t, address(router), uint256(_amountIn).toUint160());
             inputs[1] = abi.encode(address(this), uint256(_amountIn), uint256(_amountOutMinimum), config.v3, false);
         }
 
         uint256 deadline = block.timestamp + _ttl;
 
-        if (_token == address(0)) {
+        if (config.t == address(0)) {
             router.execute{value: _amountIn}(commands, inputs, deadline);
         } else {
-            _approve(_token, _amountIn, _ttl, permit2, router);
+            _approve(config.t, _amountIn, _ttl, permit2, router);
             router.execute(commands, inputs, deadline);
         }
 
@@ -121,7 +119,6 @@ library AlephSwapLibrary {
     }
 
     function swapV4(
-        address _token,
         uint128 _amountIn,
         uint128 _amountOutMinimum,
         uint48 _ttl,
@@ -132,7 +129,7 @@ library AlephSwapLibrary {
     ) internal returns (uint256 amountOut) {
         if (config.v != 4) revert InvalidVersion();
 
-        Currency currencyIn = Currency.wrap(_token);
+        Currency currencyIn = Currency.wrap(config.t);
         PathKey[] memory path = config.v4;
 
         uint256 balanceBefore = aleph.balanceOf(address(this));
@@ -160,10 +157,10 @@ library AlephSwapLibrary {
 
         uint256 deadline = block.timestamp + _ttl;
 
-        if (_token == address(0)) {
+        if (config.t == address(0)) {
             router.execute{value: _amountIn}(commands, inputs, deadline);
         } else {
-            _approve(_token, _amountIn, _ttl, permit2, router);
+            _approve(config.t, _amountIn, _ttl, permit2, router);
             router.execute(commands, inputs, deadline);
         }
 

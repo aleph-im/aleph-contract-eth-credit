@@ -229,7 +229,7 @@ contract AlephPaymentProcessor is
 
             // Swap burn + distribution portions to ALEPH
             uint256 swapAmount = burnAmount + distributionAmount;
-            uint256 alephReceived = _swapToken(_token, uint128(swapAmount), _amountOutMinimum, _ttl, cachedSwapConfig);
+            uint256 alephReceived = _swapToken(uint128(swapAmount), _amountOutMinimum, _ttl, cachedSwapConfig);
 
             // Calculate proportional ALEPH amounts based on original percentages
             uint256 alephBurnAmount = swapAmount > 0 ? (alephReceived * burnAmount) / swapAmount : 0;
@@ -254,7 +254,7 @@ contract AlephPaymentProcessor is
         } else {
             // For non-stable tokens or ALEPH: swap entire amount, then distribute proportionally
             uint256 alephReceived = _token != alephAddress
-                ? _swapToken(_token, amountIn, _amountOutMinimum, _ttl, cachedSwapConfig)
+                ? _swapToken(amountIn, _amountOutMinimum, _ttl, cachedSwapConfig)
                 : amountIn;
 
             // Calculate ALEPH amounts based on original input percentages
@@ -396,11 +396,11 @@ contract AlephPaymentProcessor is
     }
 
     /**
-     * @dev Validates that an address is not zero
+     * @dev Validates that an address is not zero or the contract itself
      * @param a Address to validate
      */
-    function _validAddr(address a) private pure {
-        if (a == address(0)) revert InvalidAddress();
+    function _validAddr(address a) private view {
+        if (a == address(0) || a == address(this)) revert InvalidAddress();
     }
 
     /**
@@ -544,15 +544,13 @@ contract AlephPaymentProcessor is
     // https://docs.uniswap.org/contracts/v4/quickstart/swap
     /**
      * @dev Routes token swapping to appropriate Uniswap version based on configuration
-     * @param _token Token address to swap from
      * @param _amountIn Amount of input tokens
      * @param _amountOutMinimum Minimum output amount expected
      * @param _ttl Time to live for the swap
-     * @param config Cached swap configuration to avoid redundant storage reads
+     * @param config Cached swap configuration (includes token address in config.t)
      * @return amountOut Amount of ALEPH tokens received
      */
     function _swapToken(
-        address _token,
         uint128 _amountIn,
         uint128 _amountOutMinimum,
         uint48 _ttl,
@@ -562,17 +560,14 @@ contract AlephPaymentProcessor is
         if (v < 2 || v > 4) revert InvalidVersion();
 
         if (v == 2) {
-            amountOut =
-                AlephSwapLibrary.swapV2(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+            amountOut = AlephSwapLibrary.swapV2(_amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
         } else if (v == 3) {
-            amountOut =
-                AlephSwapLibrary.swapV3(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+            amountOut = AlephSwapLibrary.swapV3(_amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
         } else {
-            amountOut =
-                AlephSwapLibrary.swapV4(_token, _amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+            amountOut = AlephSwapLibrary.swapV4(_amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
         }
 
-        emit SwapExecuted(_token, _amountIn, amountOut, v, block.timestamp);
+        emit SwapExecuted(config.t, _amountIn, amountOut, v, block.timestamp);
         return amountOut;
     }
 
