@@ -15,6 +15,35 @@ import {SwapConfig} from "../src/AlephSwapLibrary.sol";
 import {AlephPaymentProcessor} from "../src/AlephPaymentProcessor.sol";
 
 contract AlephPaymentProcessorTest is Test {
+    // Event declarations (matching AlephPaymentProcessor contract)
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event TokenPaymentsProcessed(
+        address indexed _token,
+        address indexed sender,
+        uint256 amount,
+        uint256 swapAmount,
+        uint256 alephReceived,
+        uint256 amountBurned,
+        uint256 amountToDistribution,
+        uint256 amountToDevelopers,
+        uint8 swapVersion,
+        bool isStable
+    );
+    event SwapExecuted(address indexed token, uint256 amountIn, uint256 amountOut, uint8 version, uint256 timestamp);
+    event SwapConfigUpdated(
+        address indexed token, uint8 version, address indexed oldToken, uint8 oldVersion, uint256 timestamp
+    );
+    event SwapConfigRemoved(address indexed token, uint8 version, uint256 timestamp);
+    event DistributionRecipientUpdated(address indexed oldRecipient, address indexed newRecipient, uint256 timestamp);
+    event DevelopersRecipientUpdated(address indexed oldRecipient, address indexed newRecipient, uint256 timestamp);
+    event BurnPercentageUpdated(uint8 oldPercentage, uint8 newPercentage, uint256 timestamp);
+    event DevelopersPercentageUpdated(uint8 oldPercentage, uint8 newPercentage, uint256 timestamp);
+    event StableTokenUpdated(address indexed token, bool isStable, uint256 timestamp);
+    event TokenWithdrawn(address indexed token, address indexed to, uint256 amount, uint256 timestamp);
+    event AdminAdded(address indexed admin, uint256 timestamp);
+    event AdminRemoved(address indexed admin, uint256 timestamp);
+    event TokensBurned(uint256 amount, string method, uint256 timestamp);
+
     address ethTokenAddress = address(0); // 0x0000000000000000000000000000000000000000
     address usdcTokenAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address alephTokenAddress = 0x27702a26126e0B3702af63Ee09aC4d1A084EF628;
@@ -133,6 +162,8 @@ contract AlephPaymentProcessorTest is Test {
     function testFuzz_set_distribution_recipient_address(address x) public {
         vm.assume(x != address(0));
 
+        vm.expectEmit(true, true, false, false);
+        emit DistributionRecipientUpdated(distributionRecipientAddress, x, 0);
         alephPaymentProcessor.setDistributionRecipient(x);
         vm.assertEq(alephPaymentProcessor.distributionRecipient(), x);
     }
@@ -140,6 +171,8 @@ contract AlephPaymentProcessorTest is Test {
     function testFuzz_set_developers_recipient_address(address x) public {
         vm.assume(x != address(0));
 
+        vm.expectEmit(true, true, false, false);
+        emit DevelopersRecipientUpdated(developersRecipientAddress, x, 0);
         alephPaymentProcessor.setDevelopersRecipient(x);
         vm.assertEq(alephPaymentProcessor.developersRecipient(), x);
     }
@@ -365,9 +398,13 @@ contract AlephPaymentProcessorTest is Test {
     function test_stable_token_detection() public {
         vm.assertEq(alephPaymentProcessor.isStableToken(usdcTokenAddress), true);
 
+        vm.expectEmit(true, false, false, false);
+        emit StableTokenUpdated(usdcTokenAddress, false, 0);
         alephPaymentProcessor.setStableToken(usdcTokenAddress, false);
         vm.assertEq(alephPaymentProcessor.isStableToken(usdcTokenAddress), false);
 
+        vm.expectEmit(true, false, false, false);
+        emit StableTokenUpdated(usdcTokenAddress, true, 0);
         alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
         vm.assertEq(alephPaymentProcessor.isStableToken(usdcTokenAddress), true);
     }
@@ -679,11 +716,6 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.withdraw(daiAddress, payable(recipient), 0); // 0 = withdraw all
     }
 
-    // Add event declarations for testing
-    event AdminAdded(address indexed admin, uint256 timestamp);
-    event AdminRemoved(address indexed admin, uint256 timestamp);
-    event TokenWithdrawn(address indexed token, address indexed to, uint256 amount, uint256 timestamp);
-
     function test_getSwapConfig() public {
         // Test getting config for a token that doesn't exist
         SwapConfig memory config = alephPaymentProcessor.getSwapConfig(makeAddr("nonExistentToken"));
@@ -733,6 +765,8 @@ contract AlephPaymentProcessorTest is Test {
 
     function test_removeSwapConfig_success() public {
         // Remove ETH token config
+        vm.expectEmit(true, false, false, false);
+        emit SwapConfigRemoved(ethTokenAddress, 4, 0); // version 4 was set in setUp
         alephPaymentProcessor.removeSwapConfig(ethTokenAddress);
 
         // Verify it's removed
@@ -749,10 +783,14 @@ contract AlephPaymentProcessorTest is Test {
 
     function test_setBurnPercentage_boundary_values() public {
         // Test setting to 0
+        vm.expectEmit(false, false, false, false);
+        emit BurnPercentageUpdated(5, 0, 0); // old: 5, new: 0
         alephPaymentProcessor.setBurnPercentage(0);
         vm.assertEq(alephPaymentProcessor.burnPercentage(), 0);
 
         // Test setting to maximum allowed (95% since developers is 5%)
+        vm.expectEmit(false, false, false, false);
+        emit BurnPercentageUpdated(0, 95, 0); // old: 0, new: 95
         alephPaymentProcessor.setBurnPercentage(95);
         vm.assertEq(alephPaymentProcessor.burnPercentage(), 95);
     }
@@ -772,10 +810,14 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.setBurnPercentage(0);
 
         // Test setting to 0
+        vm.expectEmit(false, false, false, false);
+        emit DevelopersPercentageUpdated(5, 0, 0); // old: 5, new: 0
         alephPaymentProcessor.setDevelopersPercentage(0);
         vm.assertEq(alephPaymentProcessor.developersPercentage(), 0);
 
         // Test setting to maximum
+        vm.expectEmit(false, false, false, false);
+        emit DevelopersPercentageUpdated(0, 100, 0); // old: 0, new: 100
         alephPaymentProcessor.setDevelopersPercentage(100);
         vm.assertEq(alephPaymentProcessor.developersPercentage(), 100);
     }
@@ -803,8 +845,6 @@ contract AlephPaymentProcessorTest is Test {
 
         vm.assertEq(address(alephPaymentProcessor).balance, initialBalance + 1 ether);
     }
-
-    event Transfer(address indexed from, address indexed to, uint256 value);
 
     function test_process_zero_percentages() public {
         // Set both percentages to 0
@@ -1996,6 +2036,8 @@ contract AlephPaymentProcessorTest is Test {
         v2[2] = alephTokenAddress;
 
         // Set V2 config
+        vm.expectEmit(true, false, true, false);
+        emit SwapConfigUpdated(daiTokenAddress, 2, address(0), 0, 0); // new token, no old config
         alephPaymentProcessor.setSwapConfigV2(daiTokenAddress, v2);
 
         // Verify config
@@ -2053,6 +2095,8 @@ contract AlephPaymentProcessorTest is Test {
         );
 
         // Set V3 config
+        vm.expectEmit(true, false, true, false);
+        emit SwapConfigUpdated(uniTokenAddress, 3, address(0), 0, 0); // new token, no old config
         alephPaymentProcessor.setSwapConfigV3(uniTokenAddress, v3);
 
         // Verify config
