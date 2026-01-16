@@ -3110,6 +3110,37 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.setSwapConfigV3(address(0), pathWithMultipleZeros);
     }
 
+    function test_V3_intermediate_address_zero_replacement() public {
+        // Test that address(0) in INTERMEDIATE position gets replaced with WETH
+        // Path: USDC -> address(0) (should become WETH) -> ALEPH
+        bytes memory pathWithIntermediateZero = abi.encodePacked(
+            usdcTokenAddress,
+            uint24(3000), // USDC -> ETH
+            address(0),   // ETH (should be replaced with WETH)
+            uint24(10000), // ETH -> ALEPH
+            alephTokenAddress
+        );
+
+        alephPaymentProcessor.setSwapConfigV3(usdcTokenAddress, pathWithIntermediateZero);
+
+        // Verify config was created
+        SwapConfig memory config = alephPaymentProcessor.getSwapConfig(usdcTokenAddress);
+        vm.assertEq(config.v, 3);
+        vm.assertEq(config.t, usdcTokenAddress);
+
+        // Verify WETH was replaced in the path (not address(0))
+        // Extract second token from the stored path
+        address secondToken;
+        bytes memory storedPath = config.v3;
+        assembly {
+            // Second token starts at position 23 (20 bytes + 3 bytes fee)
+            let tokenPos := add(add(storedPath, 32), 23)
+            secondToken := shr(96, mload(tokenPos))
+        }
+        vm.assertEq(secondToken, wethAddress, "Intermediate address(0) should be replaced with WETH");
+        vm.assertNotEq(secondToken, address(0), "Intermediate address(0) should not remain as zero");
+    }
+
     function test_V4_circular_path_with_non_adjacent_duplicates() public {
         address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
         address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;

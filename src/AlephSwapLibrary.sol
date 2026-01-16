@@ -331,29 +331,61 @@ library AlephSwapLibrary {
             return path;
         }
 
-        // Check if the first token is address(0)
-        address firstToken;
-        assembly {
-            // Load first 20 bytes starting at offset
-            firstToken := shr(96, calldataload(path.offset))
+        // Check if any token in the path is address(0)
+        // V3 path structure: token (20 bytes) + fee (3 bytes) + token (20 bytes) + ...
+        // Tokens appear at positions: 0, 23, 46, 69, etc.
+        bool hasAddressZero = false;
+        uint256 numTokens = (path.length + 3) / 23;
+
+        for (uint256 i = 0; i < numTokens; i++) {
+            address token;
+            assembly {
+                let tokenPos := add(path.offset, mul(i, 23))
+                token := shr(96, calldataload(tokenPos))
+            }
+            if (token == address(0)) {
+                hasAddressZero = true;
+                break;
+            }
         }
 
-        if (firstToken != address(0)) {
+        // If no address(0) found, return original path
+        if (!hasAddressZero) {
             return path;
         }
 
-        // Create new path with WETH replacing address(0)
+        // Create new path with WETH replacing all address(0) occurrences
         bytes memory newPath = new bytes(path.length);
 
-        // Copy WETH address to first 20 bytes
-        assembly {
-            // Store WETH address in the first 20 bytes (shifted left to align)
-            mstore(add(newPath, 32), shl(96, _wethAddress))
-        }
+        // Replace all address(0) with WETH at each token position
+        for (uint256 i = 0; i < numTokens; i++) {
+            uint256 tokenPos = i * 23;
+            address token;
 
-        // Copy the rest of the path (starting from byte 20)
-        for (uint256 i = 20; i < path.length; i++) {
-            newPath[i] = path[i];
+            assembly {
+                let srcPos := add(path.offset, tokenPos)
+                token := shr(96, calldataload(srcPos))
+            }
+
+            if (token == address(0)) {
+                // Replace with WETH
+                assembly {
+                    let destPos := add(add(newPath, 32), tokenPos)
+                    mstore(destPos, shl(96, _wethAddress))
+                }
+            } else {
+                // Copy original token
+                for (uint256 j = 0; j < 20; j++) {
+                    newPath[tokenPos + j] = path[tokenPos + j];
+                }
+            }
+
+            // Copy fee bytes (3 bytes after each token, except the last token)
+            if (i < numTokens - 1) {
+                for (uint256 j = 0; j < 3; j++) {
+                    newPath[tokenPos + 20 + j] = path[tokenPos + 20 + j];
+                }
+            }
         }
 
         return newPath;
