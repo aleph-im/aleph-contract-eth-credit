@@ -793,12 +793,18 @@ contract AlephPaymentProcessorTest is Test {
     function test_receive_ether() public {
         uint256 initialBalance = address(alephPaymentProcessor).balance;
 
+        // Expect Transfer event with correct parameters
+        vm.expectEmit(true, true, false, true);
+        emit Transfer(address(this), address(alephPaymentProcessor), 1 ether);
+
         // Send ETH to the contract
         (bool success,) = address(alephPaymentProcessor).call{value: 1 ether}("");
         vm.assertTrue(success);
 
         vm.assertEq(address(alephPaymentProcessor).balance, initialBalance + 1 ether);
     }
+
+    event Transfer(address indexed from, address indexed to, uint256 value);
 
     function test_process_zero_percentages() public {
         // Set both percentages to 0

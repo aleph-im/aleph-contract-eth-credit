@@ -57,6 +57,8 @@ contract AlephPaymentProcessor is
     using SafeERC20 for IERC20;
     using SafeCast for uint256;
 
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
     event TokenPaymentsProcessed(
         address indexed _token,
         address indexed sender,
@@ -528,7 +530,9 @@ contract AlephPaymentProcessor is
      * @dev Fallback function to receive ETH payments directly
      * This allows the contract to receive ETH payments
      */
-    receive() external payable {}
+    receive() external payable {
+        emit Transfer(msg.sender, address(this), msg.value);
+    }
 
     /**
      * @dev Approves token spending through Permit2 for Universal Router
