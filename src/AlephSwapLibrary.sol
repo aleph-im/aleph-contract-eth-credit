@@ -350,13 +350,9 @@ library AlephSwapLibrary {
         uint48 expiration = uint48(block.timestamp) + _ttl;
         IERC20 token = IERC20(_token);
 
-        // Use exact amount approval instead of unlimited approval
-        uint256 currentAllowance = token.allowance(address(this), address(permit2));
-        if (currentAllowance < _amount) {
-            // Calculate the exact amount needed for this swap
-            uint256 neededAmount = _amount - currentAllowance;
-            token.forceApprove(address(permit2), currentAllowance + neededAmount);
-        }
+        // Always approve exact amount needed for this swap
+        // forceApprove safely handles any existing allowance (no race condition)
+        token.forceApprove(address(permit2), _amount);
         permit2.approve(_token, address(router), _amount, expiration);
     }
 }
