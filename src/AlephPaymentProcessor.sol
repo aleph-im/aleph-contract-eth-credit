@@ -1,16 +1,30 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {Ownable2StepUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {
+    Initializable
+} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {
+    UUPSUpgradeable
+} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {
+    Ownable2StepUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/Ownable2StepUpgradeable.sol";
+import {
+    AccessControlUpgradeable
+} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {
+    ReentrancyGuardUpgradeable
+} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {
+    SafeERC20
+} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {UniversalRouter} from "@uniswap/universal-router/contracts/UniversalRouter.sol";
+import {
+    UniversalRouter
+} from "@uniswap/universal-router/contracts/UniversalRouter.sol";
 import {IPermit2} from "@uniswap/permit2/src/interfaces/IPermit2.sol";
 import {PathKey} from "@uniswap/v4-periphery/src/libraries/PathKey.sol";
 import {AlephSwapLibrary, SwapConfig} from "./AlephSwapLibrary.sol";
@@ -72,19 +86,58 @@ contract AlephPaymentProcessor is
         bool isStable
     );
 
-    event SwapExecuted(address indexed token, uint256 amountIn, uint256 amountOut, uint8 version, uint256 timestamp);
+    event SwapExecuted(
+        address indexed token,
+        uint256 amountIn,
+        uint256 amountOut,
+        uint8 version,
+        uint256 timestamp
+    );
 
     // Events for parameter updates
     event SwapConfigUpdated(
-        address indexed token, uint8 version, address indexed oldToken, uint8 oldVersion, uint256 timestamp
+        address indexed token,
+        uint8 version,
+        address indexed oldToken,
+        uint8 oldVersion,
+        uint256 timestamp
     );
-    event SwapConfigRemoved(address indexed token, uint8 version, uint256 timestamp);
-    event DistributionRecipientUpdated(address indexed oldRecipient, address indexed newRecipient, uint256 timestamp);
-    event DevelopersRecipientUpdated(address indexed oldRecipient, address indexed newRecipient, uint256 timestamp);
-    event BurnPercentageUpdated(uint8 oldPercentage, uint8 newPercentage, uint256 timestamp);
-    event DevelopersPercentageUpdated(uint8 oldPercentage, uint8 newPercentage, uint256 timestamp);
-    event StableTokenUpdated(address indexed token, bool isStable, uint256 timestamp);
-    event TokenWithdrawn(address indexed token, address indexed to, uint256 amount, uint256 timestamp);
+    event SwapConfigRemoved(
+        address indexed token,
+        uint8 version,
+        uint256 timestamp
+    );
+    event DistributionRecipientUpdated(
+        address indexed oldRecipient,
+        address indexed newRecipient,
+        uint256 timestamp
+    );
+    event DevelopersRecipientUpdated(
+        address indexed oldRecipient,
+        address indexed newRecipient,
+        uint256 timestamp
+    );
+    event BurnPercentageUpdated(
+        uint8 oldPercentage,
+        uint8 newPercentage,
+        uint256 timestamp
+    );
+    event DevelopersPercentageUpdated(
+        uint8 oldPercentage,
+        uint8 newPercentage,
+        uint256 timestamp
+    );
+    event StableTokenUpdated(
+        address indexed token,
+        bool isStable,
+        uint256 timestamp
+    );
+    event TokenWithdrawn(
+        address indexed token,
+        address indexed to,
+        uint256 amount,
+        uint256 timestamp
+    );
     event AdminAdded(address indexed admin, uint256 timestamp);
     event AdminRemoved(address indexed admin, uint256 timestamp);
     event TokensBurned(uint256 amount, string method, uint256 timestamp);
@@ -185,11 +238,12 @@ contract AlephPaymentProcessor is
      * @param _amountOutMinimum Minimum ALEPH output expected from swap
      * @param _ttl Time to live for the transaction in seconds (0-3600 seconds)
      */
-    function process(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
-        external
-        onlyRole(adminRole)
-        nonReentrant
-    {
+    function process(
+        address _token,
+        uint128 _amountIn,
+        uint128 _amountOutMinimum,
+        uint48 _ttl
+    ) external onlyRole(adminRole) nonReentrant {
         if (_ttl > 3600) revert TtlOutOfRange();
 
         // Cache swap config to avoid multiple SLOAD operations
@@ -218,26 +272,46 @@ contract AlephPaymentProcessor is
         address alephAddress = address(aleph);
 
         // Calculate portions from initial amount
-        (uint256 developersAmount, uint256 burnAmount, uint256 distributionAmount) =
-            _calculateProportions(uint256(amountIn), cachedDevelopersPercentage, cachedBurnPercentage);
+        (
+            uint256 developersAmount,
+            uint256 burnAmount,
+            uint256 distributionAmount
+        ) = _calculateProportions(
+                uint256(amountIn),
+                cachedDevelopersPercentage,
+                cachedBurnPercentage
+            );
 
         if (isStable && _token != alephAddress) {
             // For stable tokens: send developers portion directly, swap the rest
             _transferTokenOrEth(
-                _token, cachedDevelopersRecipient, developersAmount, "Transfer to developers recipient failed"
+                _token,
+                cachedDevelopersRecipient,
+                developersAmount,
+                "Transfer to developers recipient failed"
             );
 
             // Swap burn + distribution portions to ALEPH
             uint256 swapAmount = burnAmount + distributionAmount;
-            uint256 alephReceived = _swapToken(uint128(swapAmount), _amountOutMinimum, _ttl, cachedSwapConfig);
+            uint256 alephReceived = _swapToken(
+                uint128(swapAmount),
+                _amountOutMinimum,
+                _ttl,
+                cachedSwapConfig
+            );
 
             // Calculate proportional ALEPH amounts based on original percentages
-            uint256 alephBurnAmount = swapAmount > 0 ? (alephReceived * burnAmount) / swapAmount : 0;
+            uint256 alephBurnAmount = swapAmount > 0
+                ? (alephReceived * burnAmount) / swapAmount
+                : 0;
             uint256 alephDistributionAmount = alephReceived - alephBurnAmount;
 
             _burnTokens(alephBurnAmount);
 
-            aleph.safeTransfer(cachedDistributionRecipient, alephDistributionAmount);
+            aleph.safeTransfer(
+                cachedDistributionRecipient,
+                alephDistributionAmount
+            );
 
             emit TokenPaymentsProcessed(
                 _token,
@@ -254,18 +328,36 @@ contract AlephPaymentProcessor is
         } else {
             // For non-stable tokens or ALEPH: swap entire amount, then distribute proportionally
             uint256 alephReceived = _token != alephAddress
-                ? _swapToken(amountIn, _amountOutMinimum, _ttl, cachedSwapConfig)
+                ? _swapToken(
+                    amountIn,
+                    _amountOutMinimum,
+                    _ttl,
+                    cachedSwapConfig
+                )
                 : amountIn;
 
             // Calculate ALEPH amounts based on original input percentages
-            (uint256 alephDevelopersAmount, uint256 alephBurnAmount, uint256 alephDistributionAmount) =
-                _calculateProportions(alephReceived, cachedDevelopersPercentage, cachedBurnPercentage);
+            (
+                uint256 alephDevelopersAmount,
+                uint256 alephBurnAmount,
+                uint256 alephDistributionAmount
+            ) = _calculateProportions(
+                    alephReceived,
+                    cachedDevelopersPercentage,
+                    cachedBurnPercentage
+                );
 
-            aleph.safeTransfer(cachedDevelopersRecipient, alephDevelopersAmount);
+            aleph.safeTransfer(
+                cachedDevelopersRecipient,
+                alephDevelopersAmount
+            );
 
             _burnTokens(alephBurnAmount);
 
-            aleph.safeTransfer(cachedDistributionRecipient, alephDistributionAmount);
+            aleph.safeTransfer(
+                cachedDistributionRecipient,
+                alephDistributionAmount
+            );
 
             emit TokenPaymentsProcessed(
                 _token,
@@ -288,7 +380,11 @@ contract AlephPaymentProcessor is
      * @param _to Recipient address
      * @param _amount Amount to withdraw (0 for all available balance)
      */
-    function withdraw(address _token, address payable _to, uint128 _amount) external onlyRole(adminRole) nonReentrant {
+    function withdraw(
+        address _token,
+        address payable _to,
+        uint128 _amount
+    ) external onlyRole(adminRole) nonReentrant {
         // Check if token is configured for swapping
         bool isConfigured = swapConfig[_token].v > 0;
 
@@ -318,10 +414,17 @@ contract AlephPaymentProcessor is
      * @param _amountIn Requested amount (0 for full balance)
      * @return amountIn Actual amount to process
      */
-    function _getAmountIn(address _token, uint128 _amountIn) internal view returns (uint128 amountIn) {
-        uint256 balance = _token != address(0) ? IERC20(_token).balanceOf(address(this)) : address(this).balance;
+    function _getAmountIn(
+        address _token,
+        uint128 _amountIn
+    ) internal view returns (uint128 amountIn) {
+        uint256 balance = _token != address(0)
+            ? IERC20(_token).balanceOf(address(this))
+            : address(this).balance;
 
-        amountIn = _amountIn != 0 ? _amountIn : Math.min(balance, type(uint128).max).toUint128();
+        amountIn = _amountIn != 0
+            ? _amountIn
+            : Math.min(balance, type(uint128).max).toUint128();
 
         // Check balance (native ETH if _token == 0x0 or ERC20 otherwise)
         if (balance < amountIn) revert InsufficientBalance();
@@ -335,11 +438,16 @@ contract AlephPaymentProcessor is
      * @param _recipient Address to receive the transfer
      * @param _amount Amount to transfer
      */
-    function _transferTokenOrEth(address _token, address _recipient, uint256 _amount, string memory) internal {
+    function _transferTokenOrEth(
+        address _token,
+        address _recipient,
+        uint256 _amount,
+        string memory
+    ) internal {
         if (_token != address(0)) {
             IERC20(_token).safeTransfer(_recipient, _amount);
         } else {
-            (bool success,) = _recipient.call{value: _amount}("");
+            (bool success, ) = _recipient.call{value: _amount}("");
             if (!success) revert TransferFailed();
         }
     }
@@ -363,10 +471,18 @@ contract AlephPaymentProcessor is
      * @return burnAmount Amount to burn
      * @return distributionAmount Remaining amount for distribution
      */
-    function _calculateProportions(uint256 _totalAmount, uint8 _developersPercentage, uint8 _burnPercentage)
+    function _calculateProportions(
+        uint256 _totalAmount,
+        uint8 _developersPercentage,
+        uint8 _burnPercentage
+    )
         internal
         pure
-        returns (uint256 developersAmount, uint256 burnAmount, uint256 distributionAmount)
+        returns (
+            uint256 developersAmount,
+            uint256 burnAmount,
+            uint256 distributionAmount
+        )
     {
         developersAmount = (_totalAmount * _developersPercentage) / 100;
         burnAmount = (_totalAmount * _burnPercentage) / 100;
@@ -381,18 +497,28 @@ contract AlephPaymentProcessor is
         _validPerc(_newBurnPercentage, developersPercentage);
         uint8 oldPercentage = burnPercentage;
         burnPercentage = _newBurnPercentage;
-        emit BurnPercentageUpdated(oldPercentage, _newBurnPercentage, block.timestamp);
+        emit BurnPercentageUpdated(
+            oldPercentage,
+            _newBurnPercentage,
+            block.timestamp
+        );
     }
 
     /**
      * @dev Sets the developers percentage for token processing
      * @param _newDevelopersPercentage New developers percentage (0-100)
      */
-    function setDevelopersPercentage(uint8 _newDevelopersPercentage) external onlyOwner {
+    function setDevelopersPercentage(
+        uint8 _newDevelopersPercentage
+    ) external onlyOwner {
         _validPerc(burnPercentage, _newDevelopersPercentage);
         uint8 oldPercentage = developersPercentage;
         developersPercentage = _newDevelopersPercentage;
-        emit DevelopersPercentageUpdated(oldPercentage, _newDevelopersPercentage, block.timestamp);
+        emit DevelopersPercentageUpdated(
+            oldPercentage,
+            _newDevelopersPercentage,
+            block.timestamp
+        );
     }
 
     /**
@@ -407,22 +533,34 @@ contract AlephPaymentProcessor is
      * @dev Sets the distribution recipient address
      * @param _newDistributionRecipient New distribution recipient address
      */
-    function setDistributionRecipient(address _newDistributionRecipient) external onlyOwner {
+    function setDistributionRecipient(
+        address _newDistributionRecipient
+    ) external onlyOwner {
         _validAddr(_newDistributionRecipient);
         address oldRecipient = distributionRecipient;
         distributionRecipient = _newDistributionRecipient;
-        emit DistributionRecipientUpdated(oldRecipient, _newDistributionRecipient, block.timestamp);
+        emit DistributionRecipientUpdated(
+            oldRecipient,
+            _newDistributionRecipient,
+            block.timestamp
+        );
     }
 
     /**
      * @dev Sets the developers recipient address
      * @param _newDevelopersRecipient New developers recipient address
      */
-    function setDevelopersRecipient(address _newDevelopersRecipient) external onlyOwner {
+    function setDevelopersRecipient(
+        address _newDevelopersRecipient
+    ) external onlyOwner {
         _validAddr(_newDevelopersRecipient);
         address oldRecipient = developersRecipient;
         developersRecipient = _newDevelopersRecipient;
-        emit DevelopersRecipientUpdated(oldRecipient, _newDevelopersRecipient, block.timestamp);
+        emit DevelopersRecipientUpdated(
+            oldRecipient,
+            _newDevelopersRecipient,
+            block.timestamp
+        );
     }
 
     /**
@@ -465,7 +603,9 @@ contract AlephPaymentProcessor is
      * @param _address Token address to query
      * @return SwapConfig struct with swap configuration
      */
-    function getSwapConfig(address _address) external view returns (SwapConfig memory) {
+    function getSwapConfig(
+        address _address
+    ) external view returns (SwapConfig memory) {
         return swapConfig[_address];
     }
 
@@ -474,13 +614,33 @@ contract AlephPaymentProcessor is
      * @param _address Token address to configure
      * @param _v2Path Array of addresses defining the swap path
      */
-    function setSwapConfigV2(address _address, address[] calldata _v2Path) external onlyOwner {
-        address[] memory processedPath =
-            AlephSwapLibrary.validateAndCreateV2Config(_address, _v2Path, address(aleph), wethAddress);
+    function setSwapConfigV2(
+        address _address,
+        address[] calldata _v2Path
+    ) external onlyOwner {
+        address[] memory processedPath = AlephSwapLibrary
+            .validateAndCreateV2Config(
+                _address,
+                _v2Path,
+                address(aleph),
+                wethAddress
+            );
 
         SwapConfig memory oldConfig = swapConfig[_address];
-        swapConfig[_address] = SwapConfig({v: 2, t: _address, v4: new PathKey[](0), v3: "", v2: processedPath});
-        emit SwapConfigUpdated(_address, 2, oldConfig.t, oldConfig.v, block.timestamp);
+        swapConfig[_address] = SwapConfig({
+            v: 2,
+            t: _address,
+            v4: new PathKey[](0),
+            v3: "",
+            v2: processedPath
+        });
+        emit SwapConfigUpdated(
+            _address,
+            2,
+            oldConfig.t,
+            oldConfig.v,
+            block.timestamp
+        );
     }
 
     /**
@@ -488,14 +648,32 @@ contract AlephPaymentProcessor is
      * @param _address Token address to configure
      * @param _v3Path Encoded path with fee tiers for V3 swapping
      */
-    function setSwapConfigV3(address _address, bytes calldata _v3Path) external onlyOwner {
-        bytes memory processedPath =
-            AlephSwapLibrary.validateAndCreateV3Config(_address, _v3Path, address(aleph), wethAddress);
+    function setSwapConfigV3(
+        address _address,
+        bytes calldata _v3Path
+    ) external onlyOwner {
+        bytes memory processedPath = AlephSwapLibrary.validateAndCreateV3Config(
+            _address,
+            _v3Path,
+            address(aleph),
+            wethAddress
+        );
 
         SwapConfig memory oldConfig = swapConfig[_address];
-        swapConfig[_address] =
-            SwapConfig({v: 3, t: _address, v4: new PathKey[](0), v3: processedPath, v2: new address[](0)});
-        emit SwapConfigUpdated(_address, 3, oldConfig.t, oldConfig.v, block.timestamp);
+        swapConfig[_address] = SwapConfig({
+            v: 3,
+            t: _address,
+            v4: new PathKey[](0),
+            v3: processedPath,
+            v2: new address[](0)
+        });
+        emit SwapConfigUpdated(
+            _address,
+            3,
+            oldConfig.t,
+            oldConfig.v,
+            block.timestamp
+        );
     }
 
     /**
@@ -503,12 +681,27 @@ contract AlephPaymentProcessor is
      * @param _address Token address to configure
      * @param _v4Path Array of PathKey structs defining the V4 swap path
      */
-    function setSwapConfigV4(address _address, PathKey[] calldata _v4Path) external onlyOwner {
+    function setSwapConfigV4(
+        address _address,
+        PathKey[] calldata _v4Path
+    ) external onlyOwner {
         AlephSwapLibrary.validateV4Config(_address, _v4Path, address(aleph));
 
         SwapConfig memory oldConfig = swapConfig[_address];
-        swapConfig[_address] = SwapConfig({v: 4, t: _address, v4: _v4Path, v3: "", v2: new address[](0)});
-        emit SwapConfigUpdated(_address, 4, oldConfig.t, oldConfig.v, block.timestamp);
+        swapConfig[_address] = SwapConfig({
+            v: 4,
+            t: _address,
+            v4: _v4Path,
+            v3: "",
+            v2: new address[](0)
+        });
+        emit SwapConfigUpdated(
+            _address,
+            4,
+            oldConfig.t,
+            oldConfig.v,
+            block.timestamp
+        );
     }
 
     /**
@@ -560,11 +753,35 @@ contract AlephPaymentProcessor is
         if (v < 2 || v > 4) revert InvalidVersion();
 
         if (v == 2) {
-            amountOut = AlephSwapLibrary.swapV2(_amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+            amountOut = AlephSwapLibrary.swapV2(
+                _amountIn,
+                _amountOutMinimum,
+                _ttl,
+                config,
+                router,
+                permit2,
+                aleph
+            );
         } else if (v == 3) {
-            amountOut = AlephSwapLibrary.swapV3(_amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+            amountOut = AlephSwapLibrary.swapV3(
+                _amountIn,
+                _amountOutMinimum,
+                _ttl,
+                config,
+                router,
+                permit2,
+                aleph
+            );
         } else {
-            amountOut = AlephSwapLibrary.swapV4(_amountIn, _amountOutMinimum, _ttl, config, router, permit2, aleph);
+            amountOut = AlephSwapLibrary.swapV4(
+                _amountIn,
+                _amountOutMinimum,
+                _ttl,
+                config,
+                router,
+                permit2,
+                aleph
+            );
         }
 
         emit SwapExecuted(config.t, _amountIn, amountOut, v, block.timestamp);
@@ -589,8 +806,17 @@ contract AlephPaymentProcessor is
                 return;
             } catch {
                 // Method 3: Transfer to dead address as last resort
-                try aleph.transfer(0x000000000000000000000000000000000000dEaD, _amount) {
-                    emit TokensBurned(_amount, "transfer_to_dead", block.timestamp);
+                try
+                    aleph.transfer(
+                        0x000000000000000000000000000000000000dEaD,
+                        _amount
+                    )
+                {
+                    emit TokensBurned(
+                        _amount,
+                        "transfer_to_dead",
+                        block.timestamp
+                    );
                     return;
                 } catch {
                     // If all methods fail, revert
@@ -606,7 +832,9 @@ contract AlephPaymentProcessor is
      * @notice Only the contract owner can authorize upgrades
      * @notice This function is required for UUPS upgradeability pattern
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyOwner {
         // Additional upgrade validation logic can be added here if needed
         // For now, we only require owner authorization
     }

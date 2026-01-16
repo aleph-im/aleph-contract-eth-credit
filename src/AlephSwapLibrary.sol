@@ -191,8 +191,11 @@ library AlephSwapLibrary {
             revert InvalidPath();
         }
 
+        // Check for any duplicate tokens in the path (not just adjacent)
         for (uint256 i = 1; i < _v2Path.length; i++) {
-            if (_v2Path[i] == _v2Path[i - 1]) revert DuplicateTokens();
+            for (uint256 j = 0; j < i; j++) {
+                if (_v2Path[i] == _v2Path[j]) revert DuplicateTokens();
+            }
         }
 
         // Replace address(0) with WETH in the path during configuration
@@ -274,12 +277,14 @@ library AlephSwapLibrary {
             revert InvalidPath();
         }
 
-        // Check for duplicate tokens in path
+        // Check for any duplicate tokens in path (not just adjacent)
         for (uint256 i = 1; i < _v4Path.length; i++) {
             Currency currentCurrency = _v4Path[i].intermediateCurrency;
-            Currency previousCurrency = _v4Path[i - 1].intermediateCurrency;
-            if (Currency.unwrap(currentCurrency) == Currency.unwrap(previousCurrency)) {
-                revert DuplicateTokens();
+            for (uint256 j = 0; j < i; j++) {
+                Currency prevCurrency = _v4Path[j].intermediateCurrency;
+                if (Currency.unwrap(currentCurrency) == Currency.unwrap(prevCurrency)) {
+                    revert DuplicateTokens();
+                }
             }
         }
     }
@@ -292,22 +297,24 @@ library AlephSwapLibrary {
 
         uint256 numTokens = (path.length + 3) / 23; // Each hop is 23 bytes (20 + 3)
 
-        for (uint256 i = 0; i < numTokens - 1; i++) {
-            address currentToken;
-            address nextToken;
-
+        // Check each token against all previous tokens (not just adjacent)
+        for (uint256 i = 0; i < numTokens; i++) {
+            address tokenI;
             assembly {
-                // Current token at position i * 23
-                let currentPos := add(path.offset, mul(i, 23))
-                currentToken := shr(96, calldataload(currentPos))
-
-                // Next token at position (i + 1) * 23
-                let nextPos := add(path.offset, mul(add(i, 1), 23))
-                nextToken := shr(96, calldataload(nextPos))
+                let posI := add(path.offset, mul(i, 23))
+                tokenI := shr(96, calldataload(posI))
             }
 
-            if (currentToken == nextToken) {
-                revert DuplicateTokens();
+            for (uint256 j = 0; j < i; j++) {
+                address tokenJ;
+                assembly {
+                    let posJ := add(path.offset, mul(j, 23))
+                    tokenJ := shr(96, calldataload(posJ))
+                }
+
+                if (tokenI == tokenJ) {
+                    revert DuplicateTokens();
+                }
             }
         }
     }

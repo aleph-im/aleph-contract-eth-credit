@@ -2852,6 +2852,23 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, invalidPath);
     }
 
+    function test_V2_circular_path_with_non_adjacent_duplicates() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+
+        // Create circular path: WETH -> USDC -> DAI -> USDC -> ALEPH
+        // USDC appears at positions 1 and 3 (non-adjacent duplicates)
+        address[] memory circularPath = new address[](5);
+        circularPath[0] = wethTokenAddress;
+        circularPath[1] = usdcTokenAddress;
+        circularPath[2] = daiTokenAddress;
+        circularPath[3] = usdcTokenAddress; // USDC appears again (circular!)
+        circularPath[4] = alephTokenAddress;
+
+        vm.expectRevert(abi.encodeWithSignature("DuplicateTokens()"));
+        alephPaymentProcessor.setSwapConfigV2(wethTokenAddress, circularPath);
+    }
+
     function test_V2_extremely_long_path() public {
         address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
         address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
@@ -3012,17 +3029,18 @@ contract AlephPaymentProcessorTest is Test {
     function test_V3_extremely_long_path() public {
         address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
         address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+        address uniTokenAddress = 0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984;
 
-        // Create very long V3 path (4 hops)
+        // Create very long V3 path (4 hops) - no circular paths
         bytes memory longPath = abi.encodePacked(
             wethTokenAddress,
             uint24(3000), // WETH -> USDC
             usdcTokenAddress,
             uint24(500), // USDC -> DAI
             daiTokenAddress,
-            uint24(3000), // DAI -> USDC (back)
-            usdcTokenAddress,
-            uint24(10000), // USDC -> ALEPH
+            uint24(3000), // DAI -> UNI
+            uniTokenAddress,
+            uint24(10000), // UNI -> ALEPH
             alephTokenAddress
         );
 
@@ -3049,6 +3067,28 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, selfSwapPath);
     }
 
+    function test_V3_circular_path_with_non_adjacent_duplicates() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+
+        // Create circular path: WETH -> USDC -> DAI -> USDC -> ALEPH
+        // USDC appears at positions 1 and 3 (non-adjacent duplicates)
+        bytes memory circularPath = abi.encodePacked(
+            wethTokenAddress,
+            uint24(3000), // WETH -> USDC
+            usdcTokenAddress,
+            uint24(500), // USDC -> DAI
+            daiTokenAddress,
+            uint24(3000), // DAI -> USDC (back to USDC - circular!)
+            usdcTokenAddress,
+            uint24(10000), // USDC -> ALEPH
+            alephTokenAddress
+        );
+
+        vm.expectRevert(abi.encodeWithSignature("DuplicateTokens()"));
+        alephPaymentProcessor.setSwapConfigV3(wethTokenAddress, circularPath);
+    }
+
     function test_V3_address_replacement_multiple_zeros() public {
         // Test path with multiple address(0) - should now fail during configuration
         bytes memory pathWithMultipleZeros = abi.encodePacked(
@@ -3062,6 +3102,46 @@ contract AlephPaymentProcessorTest is Test {
         // Should fail during configuration due to duplicate tokens
         vm.expectRevert(abi.encodeWithSignature("DuplicateTokens()"));
         alephPaymentProcessor.setSwapConfigV3(address(0), pathWithMultipleZeros);
+    }
+
+    function test_V4_circular_path_with_non_adjacent_duplicates() public {
+        address wethTokenAddress = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        address daiTokenAddress = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
+
+        // Create circular path: WETH -> USDC -> DAI -> USDC -> ALEPH
+        // USDC appears at positions 0 and 2 (non-adjacent duplicates)
+        PathKey[] memory circularPath = new PathKey[](4);
+        circularPath[0] = PathKey({
+            intermediateCurrency: Currency.wrap(usdcTokenAddress),
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0)),
+            hookData: bytes("")
+        });
+        circularPath[1] = PathKey({
+            intermediateCurrency: Currency.wrap(daiTokenAddress),
+            fee: 500,
+            tickSpacing: 10,
+            hooks: IHooks(address(0)),
+            hookData: bytes("")
+        });
+        circularPath[2] = PathKey({
+            intermediateCurrency: Currency.wrap(usdcTokenAddress), // USDC appears again (circular!)
+            fee: 3000,
+            tickSpacing: 60,
+            hooks: IHooks(address(0)),
+            hookData: bytes("")
+        });
+        circularPath[3] = PathKey({
+            intermediateCurrency: Currency.wrap(alephTokenAddress),
+            fee: 10000,
+            tickSpacing: 200,
+            hooks: IHooks(address(0)),
+            hookData: bytes("")
+        });
+
+        vm.expectRevert(abi.encodeWithSignature("DuplicateTokens()"));
+        alephPaymentProcessor.setSwapConfigV4(wethTokenAddress, circularPath);
     }
 
     function test_V3_zero_amount_swap() public {
