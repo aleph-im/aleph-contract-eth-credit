@@ -2885,9 +2885,9 @@ contract AlephPaymentProcessorTest is Test {
 
         deal(wethTokenAddress, contractAddress, 1 ether);
 
-        // Try with extremely short TTL (30 seconds is now minimum)
+        // Try with TTL exceeding maximum (3600 seconds is maximum)
         vm.expectRevert(abi.encodeWithSignature("TtlOutOfRange()"));
-        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 30);
+        alephPaymentProcessor.process(wethTokenAddress, 0.1 ether, 0, 3601);
     }
 
     function test_V2_nonexistent_pair_path() public {

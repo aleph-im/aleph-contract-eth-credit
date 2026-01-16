@@ -181,14 +181,14 @@ contract AlephPaymentProcessor is
      * @param _token Token address to process (address(0) for ETH)
      * @param _amountIn Amount to process (0 for all available balance)
      * @param _amountOutMinimum Minimum ALEPH output expected from swap
-     * @param _ttl Time to live for the transaction in seconds (60-3600 seconds)
+     * @param _ttl Time to live for the transaction in seconds (0-3600 seconds)
      */
     function process(address _token, uint128 _amountIn, uint128 _amountOutMinimum, uint48 _ttl)
         external
         onlyRole(adminRole)
         nonReentrant
     {
-        if (_ttl < 60 || _ttl > 3600) revert TtlOutOfRange();
+        if (_ttl > 3600) revert TtlOutOfRange();
 
         // Cache swap config to avoid multiple SLOAD operations
         SwapConfig memory cachedSwapConfig = swapConfig[_token];
