@@ -254,9 +254,18 @@ library AlephSwapLibrary {
         if (_address == _alephAddress) revert InvalidAddress();
         if (_v4Path.length < 1 || _v4Path.length > 5) revert InvalidPath();
 
-        // Note: For V4, the input token is implicit and not part of the PathKey array
-        // The PathKey array represents intermediate steps in the swap path
-        // No explicit validation of first token needed as it's handled by the swap logic
+        // For V4, input token is implicit (not in PathKey array)
+        // Validate that input token doesn't appear in any intermediate outputs
+        // This prevents circular paths and validates path is meant for this token
+        Currency inputCurrency = Currency.wrap(_address);
+        for (uint256 i = 0; i < _v4Path.length; i++) {
+            Currency intermediateCurrency = _v4Path[i].intermediateCurrency;
+            // Input token should not appear as intermediate output (before the last hop)
+            // This catches misconfigurations and circular paths
+            if (i < _v4Path.length - 1 && Currency.unwrap(intermediateCurrency) == Currency.unwrap(inputCurrency)) {
+                revert InvalidPath();
+            }
+        }
 
         // Verify path ends with ALEPH token
         Currency alephCurrency = Currency.wrap(_alephAddress);
