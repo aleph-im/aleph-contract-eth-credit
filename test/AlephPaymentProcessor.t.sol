@@ -407,6 +407,23 @@ contract AlephPaymentProcessorTest is Test {
         emit StableTokenUpdated(usdcTokenAddress, true, 0);
         alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
         vm.assertEq(alephPaymentProcessor.isStableToken(usdcTokenAddress), true);
+
+        // Test validation: cannot set ETH (address(0)) as stable
+        vm.expectRevert(abi.encodeWithSignature("InvalidAddress()"));
+        alephPaymentProcessor.setStableToken(address(0), true);
+
+        // Test validation: cannot set ALEPH as stable
+        vm.expectRevert(abi.encodeWithSignature("InvalidAddress()"));
+        alephPaymentProcessor.setStableToken(alephTokenAddress, true);
+
+        // Test validation: cannot set contract itself as stable
+        vm.expectRevert(abi.encodeWithSignature("InvalidAddress()"));
+        alephPaymentProcessor.setStableToken(contractAddress, true);
+
+        // But can unset any token (even if it was never set)
+        alephPaymentProcessor.setStableToken(address(0), false); // Should succeed
+        alephPaymentProcessor.setStableToken(alephTokenAddress, false); // Should succeed
+        alephPaymentProcessor.setStableToken(contractAddress, false); // Should succeed
     }
 
     function test_stable_token_distribution_usdc() public {
@@ -603,20 +620,20 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(developersReceived + burnReceived + distributionReceived, amount);
     }
 
-    function test_stable_token_eth_distribution() public {
-        // ETH cannot be a stable token, but test the logic anyway
-        alephPaymentProcessor.setStableToken(address(0), true);
+    function test_stable_token_usdc_distribution() public {
+        // Test stable token distribution with USDC (replacing ETH test)
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
 
-        vm.deal(contractAddress, 1000);
+        deal(address(usdc), contractAddress, 1000);
 
-        uint256 initialDevelopersBalance = address(developersRecipientAddress).balance;
+        uint256 initialDevelopersBalance = usdc.balanceOf(developersRecipientAddress);
         uint256 initialDistributionBalance = aleph.balanceOf(distributionRecipientAddress);
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(0), 1000, 1, 60);
+        alephPaymentProcessor.process(usdcTokenAddress, 1000, 1, 60);
 
-        // Developers should receive 5% in ETH directly (50 wei)
-        vm.assertEq(address(developersRecipientAddress).balance - initialDevelopersBalance, 50);
+        // Developers should receive 5% in USDC directly (50 units)
+        vm.assertEq(usdc.balanceOf(developersRecipientAddress) - initialDevelopersBalance, 50);
 
         // The rest should be swapped to aleph
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), initialDistributionBalance);
@@ -886,20 +903,20 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(aleph.balanceOf(address(0)) - initialBurnBalance, 500);
     }
 
-    function test_process_stable_token_ETH_branch() public {
-        // Test the stable token branch where _token == address(0) (ETH)
-        alephPaymentProcessor.setStableToken(address(0), true);
+    function test_process_stable_token_USDC_branch() public {
+        // Test the stable token branch with USDC (replacing ETH test)
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
 
-        vm.deal(contractAddress, 1000);
+        deal(address(usdc), contractAddress, 1000);
 
-        uint256 initialDevelopersEthBalance = developersRecipientAddress.balance;
+        uint256 initialDevelopersUsdcBalance = usdc.balanceOf(developersRecipientAddress);
         uint256 initialDistributionBalance = aleph.balanceOf(distributionRecipientAddress);
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
 
-        alephPaymentProcessor.process(address(0), 1000, 1, 60);
+        alephPaymentProcessor.process(usdcTokenAddress, 1000, 1, 60);
 
-        // Developers should receive 5% in ETH directly (50 wei)
-        vm.assertEq(developersRecipientAddress.balance - initialDevelopersEthBalance, 50);
+        // Developers should receive 5% in USDC directly (50 units)
+        vm.assertEq(usdc.balanceOf(developersRecipientAddress) - initialDevelopersUsdcBalance, 50);
 
         // The rest should be swapped to aleph and distributed
         vm.assertGt(aleph.balanceOf(distributionRecipientAddress), initialDistributionBalance);
@@ -1198,17 +1215,17 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertGt(usdc.balanceOf(developersRecipientAddress), initialDevelopersBalance);
     }
 
-    function test_stable_token_eth_transfer_branch() public {
-        // Test ETH transfer branch for stable tokens (line 146, BRDA:146,8,0)
-        alephPaymentProcessor.setStableToken(address(0), true); // Set ETH as stable
-        vm.deal(contractAddress, 1000);
+    function test_stable_token_usdc_transfer_branch() public {
+        // Test ERC20 transfer branch for stable tokens with USDC (replacing ETH test)
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
+        deal(address(usdc), contractAddress, 1000);
 
-        uint256 initialDevelopersEthBalance = developersRecipientAddress.balance;
+        uint256 initialDevelopersUsdcBalance = usdc.balanceOf(developersRecipientAddress);
 
-        alephPaymentProcessor.process(address(0), 1000, 1, 60);
+        alephPaymentProcessor.process(usdcTokenAddress, 1000, 1, 60);
 
-        // Should give developers 5% in ETH directly
-        vm.assertGt(developersRecipientAddress.balance, initialDevelopersEthBalance);
+        // Should give developers 5% in USDC directly
+        vm.assertGt(usdc.balanceOf(developersRecipientAddress), initialDevelopersUsdcBalance);
     }
 
     function test_stable_token_erc20_transfer_branch() public {
@@ -1224,17 +1241,16 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(usdc.balanceOf(developersRecipientAddress) - initialDevelopersBalance, 50);
     }
 
-    function test_stable_token_eth_transfer_failure() public {
-        // Test ETH transfer failure branch (line 158, BRDA:158,10,0)
-        alephPaymentProcessor.setStableToken(address(0), true);
-        vm.deal(contractAddress, 1000);
+    function test_stable_token_usdc_transfer_failure() public {
+        // Test ERC20 transfer failure branch with USDC (replacing ETH test)
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
+        deal(address(usdc), contractAddress, 1000);
 
-        // Mock a scenario where ETH transfer could fail
-        // This is hard to test directly, but we can test the branch is there
-        alephPaymentProcessor.process(address(0), 1000, 1, 60);
+        // Normal case - transfer should succeed
+        alephPaymentProcessor.process(usdcTokenAddress, 1000, 1, 60);
 
         // If we get here, the transfer succeeded
-        vm.assertGt(developersRecipientAddress.balance, 0);
+        vm.assertGt(usdc.balanceOf(developersRecipientAddress), 0);
     }
 
     function test_stable_token_proportional_zero_swap() public {
@@ -1370,20 +1386,20 @@ contract AlephPaymentProcessorTest is Test {
         alephPaymentProcessor.process(address(0), 0.001 ether, type(uint128).max, 60); // Demand impossible output
     }
 
-    function test_stable_token_zero_developers_amount_eth() public {
-        // Test when developers amount is 0 for ETH stable token (hitting specific branches)
+    function test_stable_token_zero_developers_amount_usdc() public {
+        // Test when developers amount is 0 for USDC stable token (replacing ETH test)
         alephPaymentProcessor.setDevelopersPercentage(0);
-        alephPaymentProcessor.setStableToken(address(0), true);
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
 
-        vm.deal(contractAddress, 1000);
+        deal(address(usdc), contractAddress, 1000);
 
         uint256 initialBurnBalance = aleph.balanceOf(address(0));
-        uint256 initialDevelopersEthBalance = developersRecipientAddress.balance;
+        uint256 initialDevelopersUsdcBalance = usdc.balanceOf(developersRecipientAddress);
 
-        alephPaymentProcessor.process(address(0), 1000, 1, 60);
+        alephPaymentProcessor.process(usdcTokenAddress, 1000, 1, 60);
 
-        // Developers should get 0 ETH (0% of 1000)
-        vm.assertEq(developersRecipientAddress.balance, initialDevelopersEthBalance);
+        // Developers should get 0 USDC (0% of 1000)
+        vm.assertEq(usdc.balanceOf(developersRecipientAddress), initialDevelopersUsdcBalance);
 
         // All 1000 should be swapped and distributed/burned
         vm.assertGt(aleph.balanceOf(address(0)), initialBurnBalance);
@@ -1425,17 +1441,17 @@ contract AlephPaymentProcessorTest is Test {
     }
 
     function test_stable_token_swap_amount_zero() public {
-        // Test when swapAmount is 0 in stable token processing
-        // When developers get 100%, there's nothing to swap, which should fail with SwapAmountCannotBeZero
+        // Test when swapAmount is 0 in stable token processing with USDC
+        // When developers get 100%, there's nothing to swap, which should fail with ZeroMinimumOutput
         alephPaymentProcessor.setBurnPercentage(0);
         alephPaymentProcessor.setDevelopersPercentage(100);
-        alephPaymentProcessor.setStableToken(address(0), true); // Set ETH as stable token
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
 
-        vm.deal(contractAddress, 100);
+        deal(address(usdc), contractAddress, 100);
 
-        // This should revert because swapAmount would be 0
-        vm.expectRevert(); // Expecting SwapAmountCannotBeZero()
-        alephPaymentProcessor.process(address(0), 100, 1, 60);
+        // This should revert because swapAmount would be 0 and _amountOutMinimum must be 0
+        vm.expectRevert(abi.encodeWithSignature("ZeroMinimumOutput()"));
+        alephPaymentProcessor.process(usdcTokenAddress, 100, 0, 60);
     }
 
     function test_withdraw_token_vs_aleph_validation() public {
@@ -1804,16 +1820,14 @@ contract AlephPaymentProcessorTest is Test {
         vm.assertEq(aleph.balanceOf(contractAddress), remainingAlephBalance);
     }
 
-    function test_stable_token_eth_transfer_branch_conditions() public {
-        // Target ETH vs ERC20 branches in stable token logic (line 122/123, BRDA:122,8,1 and BRDA:123,9,1)
-
-        // Test failure condition for ETH transfer (should be hard to trigger)
-        alephPaymentProcessor.setStableToken(address(0), true);
-        vm.deal(contractAddress, 100);
+    function test_stable_token_usdc_transfer_branch_conditions() public {
+        // Target ERC20 branches in stable token logic with USDC (replacing ETH test)
+        alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
+        deal(address(usdc), contractAddress, 100);
 
         // Normal case - should succeed
-        alephPaymentProcessor.process(address(0), 100, 1, 60);
-        vm.assertGt(developersRecipientAddress.balance, 0);
+        alephPaymentProcessor.process(usdcTokenAddress, 100, 1, 60);
+        vm.assertGt(usdc.balanceOf(developersRecipientAddress), 0);
     }
 
     function test_swap_zero_amount_branch() public {
@@ -1927,15 +1941,7 @@ contract AlephPaymentProcessorTest is Test {
     function test_deep_branch_coverage_specific_conditions() public {
         // Target specific untested branch conditions that are definitely reachable
 
-        // 1. Test explicit zero address branch in stable token logic (line 129)
-        alephPaymentProcessor.setStableToken(address(0), true); // ETH as stable token
-        vm.deal(contractAddress, 1000);
-        uint256 initialDevBalance = developersRecipientAddress.balance;
-        alephPaymentProcessor.process(address(0), 1000, 1, 60);
-        // This hits the _token != address(0) branch as false
-        vm.assertGt(developersRecipientAddress.balance, initialDevBalance);
-
-        // 2. Test different percentage combinations for edge cases
+        // 1. Test different percentage combinations for edge cases
         alephPaymentProcessor.setBurnPercentage(1);
         alephPaymentProcessor.setDevelopersPercentage(1);
 
@@ -1943,7 +1949,7 @@ contract AlephPaymentProcessorTest is Test {
         deal(address(aleph), contractAddress, 100);
         alephPaymentProcessor.process(address(aleph), 100, 0, 60);
 
-        // 3. Test the swapAmount > 0 condition explicitly
+        // 2. Test the swapAmount > 0 condition explicitly
         alephPaymentProcessor.setStableToken(usdcTokenAddress, true);
         alephPaymentProcessor.setBurnPercentage(50); // Ensures swapAmount > 0
         alephPaymentProcessor.setDevelopersPercentage(30); // 20% to distribution

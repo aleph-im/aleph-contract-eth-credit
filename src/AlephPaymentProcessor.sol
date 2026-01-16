@@ -567,8 +567,14 @@ contract AlephPaymentProcessor is
      * @dev Marks a token as stable or non-stable for processing logic
      * @param _token Token address to configure
      * @param _isStable True if token is stable (developers portion not swapped)
+     * @notice Cannot mark address(0) (ETH), address(this), or ALEPH token as stable
      */
     function setStableToken(address _token, bool _isStable) external onlyOwner {
+        // Only validate when marking as stable (allow unsetting any token)
+        if (_isStable) {
+            _validAddr(_token); // Validates against address(0) and address(this)
+            if (_token == address(aleph)) revert InvalidAddress(); // ALEPH cannot be stable
+        }
         isStableToken[_token] = _isStable;
         emit StableTokenUpdated(_token, _isStable, block.timestamp);
     }
