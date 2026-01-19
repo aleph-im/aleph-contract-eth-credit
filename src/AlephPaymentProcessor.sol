@@ -121,6 +121,7 @@ contract AlephPaymentProcessor is
      *
      * @notice In production, this contract should only be initialized through a proxy.
      * Direct initialization of the implementation contract is disabled for security.
+     * @custom:oz-upgrades-unsafe-allow constructor
      */
     constructor() {
         _disableInitializers();
