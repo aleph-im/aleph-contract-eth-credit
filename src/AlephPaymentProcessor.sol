@@ -287,8 +287,7 @@ contract AlephPaymentProcessor is
             _transferTokenOrEth(
                 _token,
                 cachedDevelopersRecipient,
-                developersAmount,
-                "Transfer to developers recipient failed"
+                developersAmount
             );
 
             // Swap burn + distribution portions to ALEPH
@@ -403,7 +402,7 @@ contract AlephPaymentProcessor is
         uint256 amount = _getAmountIn(_token, _amount);
         if (amount == 0) revert InsufficientBalance();
 
-        _transferTokenOrEth(_token, _to, amount, "Transfer failed");
+        _transferTokenOrEth(_token, _to, amount);
 
         emit TokenWithdrawn(_token, _to, amount, block.timestamp);
     }
@@ -441,8 +440,7 @@ contract AlephPaymentProcessor is
     function _transferTokenOrEth(
         address _token,
         address _recipient,
-        uint256 _amount,
-        string memory
+        uint256 _amount
     ) internal {
         if (_token != address(0)) {
             IERC20(_token).safeTransfer(_recipient, _amount);

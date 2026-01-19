@@ -41,6 +41,10 @@ library AlephSwapLibrary {
     ) internal returns (uint256 amountOut) {
         if (config.v != 2 || config.v2.length < 2) revert InvalidVersion();
 
+        // Use balance delta instead of return values for robustness:
+        // - Captures actual tokens received regardless of execution path
+        // - Handles fee-on-transfer tokens correctly
+        // - Independent of UniversalRouter return value parsing
         uint256 balanceBefore = aleph.balanceOf(address(this));
 
         bytes memory commands;
@@ -85,6 +89,10 @@ library AlephSwapLibrary {
     ) internal returns (uint256 amountOut) {
         if (config.v != 3 || config.v3.length < 43) revert InvalidVersion();
 
+        // Use balance delta instead of return values for robustness:
+        // - Captures actual tokens received regardless of execution path
+        // - Handles fee-on-transfer tokens correctly
+        // - Independent of UniversalRouter return value parsing
         uint256 balanceBefore = aleph.balanceOf(address(this));
 
         bytes memory commands;
@@ -132,6 +140,10 @@ library AlephSwapLibrary {
         Currency currencyIn = Currency.wrap(config.t);
         PathKey[] memory path = config.v4;
 
+        // Use balance delta instead of return values for robustness:
+        // - Captures actual tokens received regardless of execution path
+        // - Handles fee-on-transfer tokens correctly
+        // - Independent of UniversalRouter return value parsing
         uint256 balanceBefore = aleph.balanceOf(address(this));
 
         bytes memory commands = abi.encodePacked(uint8(0x10));
@@ -271,9 +283,7 @@ library AlephSwapLibrary {
         }
 
         // Verify path ends with ALEPH token
-        Currency alephCurrency = Currency.wrap(_alephAddress);
-        Currency pathEndCurrency = _v4Path[_v4Path.length - 1].intermediateCurrency;
-        if (Currency.unwrap(pathEndCurrency) != Currency.unwrap(alephCurrency)) {
+        if (Currency.unwrap(_v4Path[_v4Path.length - 1].intermediateCurrency) != _alephAddress) {
             revert InvalidPath();
         }
 
@@ -295,7 +305,10 @@ library AlephSwapLibrary {
     function _checkV3PathForDuplicates(bytes calldata path) private pure {
         if (path.length < 43) return; // Minimum path length for 2 tokens
 
-        uint256 numTokens = (path.length + 3) / 23; // Each hop is 23 bytes (20 + 3)
+        // V3 path structure: token(20 bytes) + fee(3 bytes) + ... + token(20 bytes)
+        // The +3 accounts for the last token not having a trailing fee section
+        // Each hop is 23 bytes (20 bytes token + 3 bytes fee), except the last token
+        uint256 numTokens = (path.length + 3) / 23;
 
         // Check each token against all previous tokens (not just adjacent)
         for (uint256 i = 0; i < numTokens; i++) {
@@ -335,6 +348,9 @@ library AlephSwapLibrary {
         // V3 path structure: token (20 bytes) + fee (3 bytes) + token (20 bytes) + ...
         // Tokens appear at positions: 0, 23, 46, 69, etc.
         bool hasAddressZero = false;
+        // V3 path structure: token(20 bytes) + fee(3 bytes) + ... + token(20 bytes)
+        // The +3 accounts for the last token not having a trailing fee section
+        // Each hop is 23 bytes (20 bytes token + 3 bytes fee), except the last token
         uint256 numTokens = (path.length + 3) / 23;
 
         for (uint256 i = 0; i < numTokens; i++) {
