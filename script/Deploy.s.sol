@@ -21,7 +21,7 @@ contract BaseDeployScript is Script {
         uint8 developersPercentage
     ) internal returns (address) {
         address proxy = Upgrades.deployUUPSProxy(
-            "AlephPaymentProcessor.sol",
+            "AlephPaymentProcessor.sol:AlephPaymentProcessor",
             abi.encodeCall(
                 AlephPaymentProcessor.initialize,
                 (
