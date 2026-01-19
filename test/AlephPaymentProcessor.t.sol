@@ -3116,7 +3116,7 @@ contract AlephPaymentProcessorTest is Test {
         bytes memory pathWithIntermediateZero = abi.encodePacked(
             usdcTokenAddress,
             uint24(3000), // USDC -> ETH
-            address(0),   // ETH (should be replaced with WETH)
+            address(0), // ETH (should be replaced with WETH)
             uint24(10000), // ETH -> ALEPH
             alephTokenAddress
         );
