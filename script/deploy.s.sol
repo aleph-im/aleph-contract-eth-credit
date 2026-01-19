@@ -87,7 +87,7 @@ contract DeployStagingScript is BaseDeployScript {
             0x000000000022D473030F116dDEE9F6B43aC78BA3,
             0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14,
             0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238,
-            5,
+            0,
             5
         );
 
@@ -111,7 +111,7 @@ contract DeployProductionScript is BaseDeployScript {
             0x000000000022D473030F116dDEE9F6B43aC78BA3,
             0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2,
             0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48,
-            5,
+            0,
             5
         );
 
